@@ -1,6 +1,7 @@
 import sqlite3
 
 def init_db(path):
+    """Database initialization logic that creates Splits, sessions, session_variants, and exercises"""
     conn = sqlite3.connect(path)
 
     # Main Workout Tables
@@ -30,7 +31,7 @@ def init_db(path):
         )
     """)
     conn.execute("""
-    CREATE TABLE IF NOT EXISTS template_exercises (
+    CREATE TABLE IF NOT EXISTS exercises (
         id INTEGER PRIMARY KEY,
         variant_id INTEGER NOT NULL,
         name TEXT NOT NULL,
@@ -66,3 +67,34 @@ def init_db(path):
     """)
     conn.commit()
     return conn
+
+# History Functions - log workout data
+def log_workout(conn, variant_id, exercise_entries):
+    """Saves workout history."""
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO workout_logs (variant_id, date) VALUES (?, DATE('now'))",
+        (variant_id,)
+    )
+    workout_log_id = cur.lastrowid
+
+    for exercise in exercise_entries:
+        for i, s in enumerate(exercise["sets"], start=1):
+            cur.execute(
+                """INSERT INTO logged_sets
+                   (workout_log_id, exercise_name, set_number, reps, weight)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (workout_log_id, exercise["name"], i, s["reps"], s["weight"])
+            )
+    conn.commit()
+
+
+def update_exercises(conn, variant_id, exercise_name, sets, reps, weight):
+    """Updates an individual exercise."""
+    conn.execute(
+        """UPDATE exercises
+           SET current_sets = ?, current_reps = ?, current_weight = ?
+           WHERE variant_id = ? AND name = ?""",
+        (sets, reps, weight, variant_id, exercise_name)
+    )
+    conn.commit()
