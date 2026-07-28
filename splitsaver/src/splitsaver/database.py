@@ -107,6 +107,15 @@ def delete_split(conn, split_id):
     conn.commit()
 
 
+def rename_split(conn, split_id, new_name):
+    """Renames a split. Sessions/variants/exercises underneath are unaffected."""
+    conn.execute(
+        "UPDATE splits SET name = ? WHERE id = ?",
+        (new_name, split_id)
+    )
+    conn.commit()
+
+
 # ---------------------------------------------------------------------------
 # Sessions
 # ---------------------------------------------------------------------------
@@ -131,6 +140,15 @@ def get_sessions(conn, split_id):
     return cur.fetchall()
 
 
+def rename_session(conn, session_id, new_name):
+    """Renames a session (e.g. 'Legs' -> 'Lower Body'). Variants/exercises underneath are unaffected."""
+    conn.execute(
+        "UPDATE sessions SET name = ? WHERE id = ?",
+        (new_name, session_id)
+    )
+    conn.commit()
+
+
 # ---------------------------------------------------------------------------
 # Session variants
 # ---------------------------------------------------------------------------
@@ -153,6 +171,16 @@ def get_variants(conn, session_id):
         (session_id,)
     )
     return cur.fetchall()
+
+
+def rename_variant(conn, variant_id, new_name):
+    """Renames a variant (e.g. 'A' -> 'Heavy Day'). Exercises underneath are unaffected."""
+    conn.execute(
+        "UPDATE session_variants SET name = ? WHERE id = ?",
+        (new_name, variant_id)
+    )
+    conn.commit()
+
 
 
 
@@ -188,6 +216,17 @@ def delete_exercise(conn, exercise_id):
     """Removes an exercise from the plan. Does not affect past logged_sets history,
     since logged_sets stores exercise_name as free text, decoupled from this table."""
     conn.execute("DELETE FROM exercises WHERE id = ?", (exercise_id,))
+    conn.commit()
+
+
+def rename_exercise(conn, exercise_id, new_name):
+    """Renames an exercise in the plan (e.g. 'Squat' -> 'Front Squat').
+    Past logged_sets keep the OLD name, since exercise_name there is free text —
+    your history stays accurate to what it was actually called at the time."""
+    conn.execute(
+        "UPDATE exercises SET name = ? WHERE id = ?",
+        (new_name, exercise_id)
+    )
     conn.commit()
 
 
