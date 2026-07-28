@@ -2,6 +2,7 @@ import sqlite3
 
 def init_db(path):
     """Database initialization logic that creates Splits, sessions, session_variants, and exercises"""
+
     conn = sqlite3.connect(path)
 
     # Main Workout Tables
@@ -68,7 +69,132 @@ def init_db(path):
     conn.commit()
     return conn
 
+# ---------------------------------------------------------------------------
+# Splits
+# ---------------------------------------------------------------------------
+ 
+def create_split(conn, name, notes=None):
+    """Creates a new split (e.g. 'Push Pull Legs') and returns its id."""
+    cur = conn.execute(
+        "INSERT INTO splits (name, notes) VALUES (?, ?)",
+        (name, notes)
+    )
+    conn.commit()
+    return cur.lastrowid
+ 
+ 
+def get_splits(conn):
+    """Returns all splits as a list of (id, name, notes)."""
+    cur = conn.execute("SELECT id, name, notes FROM splits ORDER BY id")
+    return cur.fetchall()
+ 
+ 
+def delete_split(conn, split_id):
+    """Deletes a split. Does NOT cascade automatically (no ON DELETE CASCADE),
+    so sessions/variants/exercises under it are deleted explicitly first."""
+    session_ids = [row[0] for row in conn.execute(
+        "SELECT id FROM sessions WHERE split_id = ?", (split_id,)
+    )]
+    for session_id in session_ids:
+        variant_ids = [row[0] for row in conn.execute(
+            "SELECT id FROM session_variants WHERE session_id = ?", (session_id,)
+        )]
+        for variant_id in variant_ids:
+            conn.execute("DELETE FROM exercises WHERE variant_id = ?", (variant_id,))
+        conn.execute("DELETE FROM session_variants WHERE session_id = ?", (session_id,))
+    conn.execute("DELETE FROM sessions WHERE split_id = ?", (split_id,))
+    conn.execute("DELETE FROM splits WHERE id = ?", (split_id,))
+    conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# Sessions
+# ---------------------------------------------------------------------------
+ 
+def create_session(conn, split_id, name):
+    """Creates a new session (e.g. 'Legs') under a split and returns its id."""
+    cur = conn.execute(
+        "INSERT INTO sessions (split_id, name, order_index) VALUES (?, ?, "
+        "(SELECT COALESCE(MAX(order_index), -1) + 1 FROM sessions WHERE split_id = ?))",
+        (split_id, name, split_id)
+    )
+    conn.commit()
+    return cur.lastrowid
+ 
+ 
+def get_sessions(conn, split_id):
+    """Returns all sessions for a split as a list of (id, name)."""
+    cur = conn.execute(
+        "SELECT id, name FROM sessions WHERE split_id = ? ORDER BY order_index",
+        (split_id,)
+    )
+    return cur.fetchall()
+
+
+# ---------------------------------------------------------------------------
+# Session variants
+# ---------------------------------------------------------------------------
+ 
+def create_variant(conn, session_id, name):
+    """Creates a new variant (e.g. 'A') under a session and returns its id."""
+    cur = conn.execute(
+        "INSERT INTO session_variants (session_id, name, order_index) VALUES (?, ?, "
+        "(SELECT COALESCE(MAX(order_index), -1) + 1 FROM session_variants WHERE session_id = ?))",
+        (session_id, name, session_id)
+    )
+    conn.commit()
+    return cur.lastrowid
+ 
+ 
+def get_variants(conn, session_id):
+    """Returns all variants for a session as a list of (id, name)."""
+    cur = conn.execute(
+        "SELECT id, name FROM session_variants WHERE session_id = ? ORDER BY order_index",
+        (session_id,)
+    )
+    return cur.fetchall()
+
+
+
+# ---------------------------------------------------------------------------
+# Exercises
+# ---------------------------------------------------------------------------
+ 
+def add_exercise(conn, variant_id, name, sets=3, reps=8, weight=0):
+    """Adds a new exercise to a variant's plan and returns its id."""
+    cur = conn.execute(
+        """INSERT INTO exercises
+           (variant_id, name, order_index, current_sets, current_reps, current_weight)
+           VALUES (?, ?, (SELECT COALESCE(MAX(order_index), -1) + 1 FROM exercises WHERE variant_id = ?), ?, ?, ?)""",
+        (variant_id, name, variant_id, sets, reps, weight)
+    )
+    conn.commit()
+    return cur.lastrowid
+ 
+ 
+def get_current_state(conn, variant_id):
+    """Returns the current plan (last known sets/reps/weight) for each exercise in a variant.
+    Each row is (id, name, current_sets, current_reps, current_weight)."""
+    cur = conn.execute(
+        """SELECT id, name, current_sets, current_reps, current_weight
+           FROM exercises
+           WHERE variant_id = ? ORDER BY order_index""",
+        (variant_id,)
+    )
+    return cur.fetchall()
+ 
+ 
+def delete_exercise(conn, exercise_id):
+    """Removes an exercise from the plan. Does not affect past logged_sets history,
+    since logged_sets stores exercise_name as free text, decoupled from this table."""
+    conn.execute("DELETE FROM exercises WHERE id = ?", (exercise_id,))
+    conn.commit()
+
+
+# ---------------------------------------------------------------------------
 # History Functions - log workout data
+# ---------------------------------------------------------------------------
+ 
 def log_workout(conn, variant_id, exercise_entries):
     """Saves workout history."""
     cur = conn.cursor()
@@ -77,7 +203,7 @@ def log_workout(conn, variant_id, exercise_entries):
         (variant_id,)
     )
     workout_log_id = cur.lastrowid
-
+ 
     for exercise in exercise_entries:
         for i, s in enumerate(exercise["sets"], start=1):
             cur.execute(
@@ -87,8 +213,47 @@ def log_workout(conn, variant_id, exercise_entries):
                 (workout_log_id, exercise["name"], i, s["reps"], s["weight"])
             )
     conn.commit()
-
-
+    return workout_log_id
+ 
+ 
+def get_workout_history(conn, variant_id):
+    """Returns all past workout_logs for a variant, most recent first.
+    Each row is (id, date, notes)."""
+    cur = conn.execute(
+        """SELECT id, date, notes FROM workout_logs
+           WHERE variant_id = ? ORDER BY date DESC, id DESC""",
+        (variant_id,)
+    )
+    return cur.fetchall()
+ 
+ 
+def get_logged_sets(conn, workout_log_id):
+    """Returns all sets recorded for a specific past workout.
+    Each row is (exercise_name, set_number, reps, weight)."""
+    cur = conn.execute(
+        """SELECT exercise_name, set_number, reps, weight
+           FROM logged_sets
+           WHERE workout_log_id = ? ORDER BY exercise_name, set_number""",
+        (workout_log_id,)
+    )
+    return cur.fetchall()
+ 
+ 
+def get_exercise_history(conn, variant_id, exercise_name):
+    """Returns every logged set for one specific exercise across all past workouts —
+    useful for a progress-over-time view (e.g. a weight-over-time chart for Squat).
+    Each row is (date, set_number, reps, weight)."""
+    cur = conn.execute(
+        """SELECT wl.date, ls.set_number, ls.reps, ls.weight
+           FROM logged_sets ls
+           JOIN workout_logs wl ON wl.id = ls.workout_log_id
+           WHERE wl.variant_id = ? AND ls.exercise_name = ?
+           ORDER BY wl.date ASC, ls.set_number ASC""",
+        (variant_id, exercise_name)
+    )
+    return cur.fetchall()
+ 
+ 
 def update_exercises(conn, variant_id, exercise_name, sets, reps, weight):
     """Updates an individual exercise."""
     conn.execute(
@@ -98,3 +263,5 @@ def update_exercises(conn, variant_id, exercise_name, sets, reps, weight):
         (sets, reps, weight, variant_id, exercise_name)
     )
     conn.commit()
+ 
+ 
