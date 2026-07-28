@@ -9,13 +9,17 @@ from splitsaver.database import (
     create_split,
     get_splits,
     delete_split,
+    rename_split,
     create_session,
     get_sessions,
+    rename_session,
     create_variant,
     get_variants,
+    rename_variant,
     add_exercise,
     get_current_state,
     delete_exercise,
+    rename_exercise,
     log_workout,
     get_workout_history,
     get_logged_sets,
@@ -82,6 +86,23 @@ def test_delete_split_removes_split_and_everything_under_it(conn):
     assert conn.execute("SELECT * FROM session_variants WHERE session_id = ?", (session_id,)).fetchall() == []
     assert conn.execute("SELECT * FROM exercises WHERE variant_id = ?", (variant_id,)).fetchall() == []
 
+def test_rename_split(conn):
+    split_id = create_split(conn, "Push Pull Legs")
+    rename_split(conn, split_id, "PPL v2")
+ 
+    splits = get_splits(conn)
+    assert splits[0][1] == "PPL v2"
+ 
+ 
+def test_rename_split_does_not_affect_sessions_underneath(conn):
+    split_id = create_split(conn, "Push Pull Legs")
+    create_session(conn, split_id, "Legs")
+ 
+    rename_split(conn, split_id, "PPL v2")
+ 
+    sessions = get_sessions(conn, split_id)
+    assert sessions[0][1] == "Legs"  # untouched
+
 
 # ---------------------------------------------------------------------------
 # Sessions
@@ -107,6 +128,16 @@ def test_get_sessions_only_returns_matching_split(conn):
     assert [s[1] for s in sessions_a] == ["Legs"]
 
 
+def test_rename_session(conn):
+    split_id = create_split(conn, "Push Pull Legs")
+    session_id = create_session(conn, split_id, "Legs")
+ 
+    rename_session(conn, session_id, "Lower Body")
+ 
+    sessions = get_sessions(conn, split_id)
+    assert sessions[0][1] == "Lower Body"
+
+
 # ---------------------------------------------------------------------------
 # Session variants
 # ---------------------------------------------------------------------------
@@ -119,6 +150,17 @@ def test_create_and_get_variants(conn):
 
     variants = get_variants(conn, session_id)
     assert [v[1] for v in variants] == ["A", "B"]
+
+
+def test_rename_variant(conn):
+    split_id = create_split(conn, "Push Pull Legs")
+    session_id = create_session(conn, split_id, "Legs")
+    variant_id = create_variant(conn, session_id, "A")
+ 
+    rename_variant(conn, variant_id, "Heavy Day")
+ 
+    variants = get_variants(conn, session_id)
+    assert variants[0][1] == "Heavy Day"
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +203,37 @@ def test_delete_exercise_removes_from_plan_only(conn, variant_with_exercise):
     history = get_workout_history(conn, variant_id)
     assert len(history) == 1
     assert len(get_logged_sets(conn, history[0][0])) == 1
+
+
+def test_rename_exercise_changes_the_plan(conn, variant_with_exercise):
+    variant_id = variant_with_exercise
+    exercise_id = get_current_state(conn, variant_id)[0][0]
+ 
+    rename_exercise(conn, exercise_id, "Front Squat")
+ 
+    state = get_current_state(conn, variant_id)
+    assert state[0][1] == "Front Squat"
+ 
+ 
+def test_rename_exercise_does_not_change_past_history(conn, variant_with_exercise):
+    """History should keep the OLD name — it's free text, decoupled from the plan."""
+    variant_id = variant_with_exercise
+    exercise_id = get_current_state(conn, variant_id)[0][0]
+ 
+    log_workout(conn, variant_id, [
+        {"name": "Squat", "sets": [{"reps": 8, "weight": 20}]}
+    ])
+ 
+    rename_exercise(conn, exercise_id, "Front Squat")
+ 
+    history = get_workout_history(conn, variant_id)
+    logged = get_logged_sets(conn, history[0][0])
+    assert logged[0][0] == "Squat"  # old name preserved in history
+ 
+    # And querying exercise history under the NEW name finds nothing,
+    # since it was logged under the old name before the rename
+    assert get_exercise_history(conn, variant_id, "Front Squat") == []
+    assert len(get_exercise_history(conn, variant_id, "Squat")) == 1
 
 
 # ---------------------------------------------------------------------------
