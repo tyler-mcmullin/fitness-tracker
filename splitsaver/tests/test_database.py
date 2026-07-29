@@ -17,6 +17,7 @@ from splitsaver.database import (
     create_variant,
     get_variants,
     rename_variant,
+    delete_variant,
     add_exercise,
     get_current_state,
     delete_exercise,
@@ -186,6 +187,29 @@ def test_rename_variant(conn):
  
     variants = get_variants(conn, session_id)
     assert variants[0][1] == "Heavy Day"
+
+def test_delete_variant_removes_variant_and_its_exercises(conn):
+    split_id = create_split(conn, "Push Pull Legs")
+    session_id = create_session(conn, split_id, "Legs")
+    variant_id = create_variant(conn, session_id, "A")
+    add_exercise(conn, variant_id, "Squat", sets=3, reps=8, weight=20)
+ 
+    delete_variant(conn, variant_id)
+ 
+    assert get_variants(conn, session_id) == []
+    assert conn.execute("SELECT * FROM exercises WHERE variant_id = ?", (variant_id,)).fetchall() == []
+ 
+ 
+def test_delete_variant_does_not_affect_sibling_variants(conn):
+    split_id = create_split(conn, "Push Pull Legs")
+    session_id = create_session(conn, split_id, "Legs")
+    variant_a = create_variant(conn, session_id, "A")
+    variant_b = create_variant(conn, session_id, "B")
+ 
+    delete_variant(conn, variant_a)
+ 
+    remaining = get_variants(conn, session_id)
+    assert [v[1] for v in remaining] == ["B"]
 
 
 # ---------------------------------------------------------------------------
