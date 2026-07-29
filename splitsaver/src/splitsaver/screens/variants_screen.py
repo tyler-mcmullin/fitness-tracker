@@ -38,9 +38,12 @@ def _parse_weight(text):
 
 
 class VariantsScreen:
-    """Shows the variants (e.g. 'A', 'B') under one session, one at a time,
-    with left/right arrow buttons and a dot indicator to page between them.
-    Each variant's exercises are listed inline below, with weight/reps editable
+    """Shows the variants (e.g. 'A', 'B') under one session, one at a time.
+    Every session starts with a single auto-created default variant, shown
+    plainly with no pager controls. Once the user adds a second variant,
+    left/right arrows and a dot indicator appear to page between them, and
+    a 'Delete This Variant' button becomes available. Each variant's
+    exercises are listed inline below, with sets/reps/weight editable
     directly, plus a button to log the workout to history."""
 
     def __init__(self, conn, window, session_id, session_name, on_back):
@@ -75,18 +78,21 @@ class VariantsScreen:
             style=Pack(margin=(0, 0, 10, 0), font_size=18, font_weight="bold"),
         )
 
-        # Pager: [ < ]  Variant Name  [ > ]
-        pager_row = toga.Box(style=Pack(direction=ROW, margin=(0, 0, 5, 0), align_items="center"))
+        # Pager: [ < ]  Variant Name  [ > ]  — only shown once there's more than one variant
+        self.pager_row = toga.Box(style=Pack(direction=ROW, margin=(0, 0, 5, 0), align_items="center"))
         self.left_arrow = toga.Button("<", on_press=self._on_prev, style=Pack(width=40), enabled=False)
         self.variant_name_label = toga.Label(
             "", style=Pack(flex=1, text_align="center", font_size=16, font_weight="bold")
         )
         self.right_arrow = toga.Button(">", on_press=self._on_next, style=Pack(width=40), enabled=False)
-        pager_row.add(self.left_arrow)
-        pager_row.add(self.variant_name_label)
-        pager_row.add(self.right_arrow)
+        self.pager_row.add(self.left_arrow)
+        self.pager_row.add(self.variant_name_label)
+        self.pager_row.add(self.right_arrow)
 
         self.dots_label = toga.Label("", style=Pack(margin=(0, 0, 10, 0), text_align="center"))
+
+        # Placeholder that holds pager_row + dots_label when there's more than one variant
+        self.pager_container = toga.Box(style=Pack(direction=COLUMN))
 
         # Exercise list for the current variant
         self.exercise_list_box = toga.Box(style=Pack(direction=COLUMN, margin=(0, 0, 10, 0)))
@@ -111,6 +117,9 @@ class VariantsScreen:
             "Delete This Variant", on_press=self._on_delete_variant, style=Pack(margin=(0, 0, 10, 0)),
             enabled=False,
         )
+        # Placeholder that holds delete_variant_button when there's more than one variant —
+        # deleting the sole default variant isn't offered, since every session needs at least one
+        self.delete_variant_container = toga.Box(style=Pack(direction=COLUMN))
 
         add_variant_row = toga.Box(style=Pack(direction=ROW))
         self.new_variant_input = toga.TextInput(
@@ -122,12 +131,11 @@ class VariantsScreen:
 
         box.add(back_button)
         box.add(title)
-        box.add(pager_row)
-        box.add(self.dots_label)
+        box.add(self.pager_container)
         box.add(exercise_scroll)
         box.add(add_exercise_row)
         box.add(self.log_button)
-        box.add(self.delete_variant_button)
+        box.add(self.delete_variant_container)
         box.add(add_variant_row)
         return box
 
@@ -154,6 +162,7 @@ class VariantsScreen:
             self.right_arrow.enabled = False
             self.log_button.enabled = False
             self.delete_variant_button.enabled = False
+            self._set_multi_variant_controls_visible(False)
             self._render_exercises(variant_id=None)
             return
 
@@ -167,7 +176,27 @@ class VariantsScreen:
         self.log_button.enabled = True
         self.delete_variant_button.enabled = True
 
+        # Only show the pager/dots/delete-variant controls once there's more than
+        # one variant — a single (likely auto-created) variant is shown plainly.
+        self._set_multi_variant_controls_visible(count > 1)
+
         self._render_exercises(variant_id)
+
+    def _set_multi_variant_controls_visible(self, visible):
+        """Adds or removes the pager/dots and delete-variant button from the layout."""
+        pager_should_be_shown = self.pager_row in self.pager_container.children
+        if visible and not pager_should_be_shown:
+            self.pager_container.add(self.pager_row)
+            self.pager_container.add(self.dots_label)
+        elif not visible and pager_should_be_shown:
+            self.pager_container.remove(self.pager_row)
+            self.pager_container.remove(self.dots_label)
+
+        delete_should_be_shown = self.delete_variant_button in self.delete_variant_container.children
+        if visible and not delete_should_be_shown:
+            self.delete_variant_container.add(self.delete_variant_button)
+        elif not visible and delete_should_be_shown:
+            self.delete_variant_container.remove(self.delete_variant_button)
 
     def _render_exercises(self, variant_id):
         """Rebuilds the inline exercise list for the given variant."""
