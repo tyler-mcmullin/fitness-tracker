@@ -182,6 +182,20 @@ def rename_variant(conn, variant_id, new_name):
     conn.commit()
 
 
+def delete_session(conn, session_id):
+    """Deletes a session and everything under it (variants, exercises).
+    Does NOT cascade automatically (no ON DELETE CASCADE), so variants/exercises
+    are deleted explicitly first. Workout history is untouched."""
+    variant_ids = [row[0] for row in conn.execute(
+        "SELECT id FROM session_variants WHERE session_id = ?", (session_id,)
+    )]
+    for variant_id in variant_ids:
+        conn.execute("DELETE FROM exercises WHERE variant_id = ?", (variant_id,))
+    conn.execute("DELETE FROM session_variants WHERE session_id = ?", (session_id,))
+    conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+    conn.commit()
+
+
 
 
 # ---------------------------------------------------------------------------
