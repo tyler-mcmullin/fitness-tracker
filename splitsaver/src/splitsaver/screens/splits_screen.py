@@ -6,18 +6,17 @@ from splitsaver.database import create_split, get_splits, delete_split
 
 
 class SplitsScreen:
-    """Shows the list of splits. Lets the user add, delete, and open a split."""
+    """Shows the list of splits. Tap a row to open it, swipe to delete, or use the field below to add one."""
 
     def __init__(self, conn, window, on_open_split):
         """
         conn: sqlite3 connection
         window: the toga.MainWindow, needed for dialogs
-        on_open_split: callback(split_id, split_name) -> called when a split is activated
+        on_open_split: callback(split_id, split_name) -> called when a split is tapped
         """
         self.conn = conn
         self.window = window
         self.on_open_split = on_open_split
-        self.selected_split_id = None
 
         self.box = self._build()
         self.refresh()
@@ -30,14 +29,13 @@ class SplitsScreen:
             style=Pack(margin=(0, 0, 10, 0), font_size=18, font_weight="bold"),
         )
 
-        self.table = toga.Table(
-            columns=["Name"],
+        self.list_view = toga.DetailedList(
             style=Pack(flex=1, margin=(0, 0, 10, 0)),
             on_select=self._on_select,
-            on_activate=self._on_activate,
+            on_primary_action=self._on_swipe_delete,
         )
 
-        add_row = toga.Box(style=Pack(direction=ROW, margin=(0, 0, 10, 0)))
+        add_row = toga.Box(style=Pack(direction=ROW))
         self.new_split_input = toga.TextInput(
             placeholder="e.g. Push Pull Legs",
             style=Pack(flex=1, margin=(0, 5, 0, 0)),
@@ -46,35 +44,16 @@ class SplitsScreen:
         add_row.add(self.new_split_input)
         add_row.add(add_button)
 
-        self.delete_button = toga.Button(
-            "Delete Selected",
-            on_press=self._on_delete,
-            style=Pack(margin=0),
-            enabled=False,
-        )
-
-        self.open_button = toga.Button(
-            "Open Selected",
-            on_press=self._on_open_pressed,
-            style=Pack(margin=(0, 0, 10, 0)),
-            enabled=False,
-        )
-
         box.add(title)
-        box.add(self.table)
+        box.add(self.list_view)
         box.add(add_row)
-        box.add(self.open_button)
-        box.add(self.delete_button)
         return box
 
     def refresh(self):
-        """Re-reads splits from the database and repopulates the table."""
+        """Re-reads splits from the database and repopulates the list."""
         splits = get_splits(self.conn)  # list of (id, name, notes)
         self._ids_by_row = [s[0] for s in splits]
-        self.table.data = [(s[1],) for s in splits]
-        self.selected_split_id = None
-        self.delete_button.enabled = False
-        self.open_button.enabled = False
+        self.list_view.data = [{"title": s[1], "subtitle": s[2] or ""} for s in splits]
 
     # -----------------------------------------------------------------
     # Event handlers
@@ -91,33 +70,18 @@ class SplitsScreen:
         self.refresh()
 
     def _on_select(self, widget):
+        """Single tap on a row -> open it immediately."""
         if widget.selection is None:
-            self.selected_split_id = None
-            self.delete_button.enabled = False
-            self.open_button.enabled = False
             return
-
-        row_index = self.table.data.index(widget.selection)
-        self.selected_split_id = self._ids_by_row[row_index]
-        self.delete_button.enabled = True
-        self.open_button.enabled = True
-
-    def _on_open_pressed(self, widget):
-        if self.selected_split_id is None:
-            return
-        row_index = self._ids_by_row.index(self.selected_split_id)
-        split_name = self.table.data[row_index].name
-        self.on_open_split(self.selected_split_id, split_name)
-
-    def _on_activate(self, widget, row):
-        row_index = self.table.data.index(row)
+        row_index = self.list_view.data.index(widget.selection)
         split_id = self._ids_by_row[row_index]
-        split_name = row.name
+        split_name = widget.selection.title
         self.on_open_split(split_id, split_name)
 
-    async def _on_delete(self, widget):
-        if self.selected_split_id is None:
-            return
+    async def _on_swipe_delete(self, widget, row):
+        """Fires when the user swipes a row and taps the revealed 'Delete' action."""
+        row_index = self.list_view.data.index(row)
+        split_id = self._ids_by_row[row_index]
 
         confirmed = await self.window.dialog(
             toga.ConfirmDialog(
@@ -126,5 +90,5 @@ class SplitsScreen:
             )
         )
         if confirmed:
-            delete_split(self.conn, self.selected_split_id)
+            delete_split(self.conn, split_id)
             self.refresh()
