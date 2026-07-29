@@ -196,9 +196,13 @@ def rename_variant(conn, variant_id, new_name):
     conn.commit()
 
 
-
-
-
+def delete_variant(conn, variant_id):
+    """Deletes a variant and its exercise plan. Workout history is untouched,
+    since workout_logs/logged_sets reference variant_id but are never cleaned up
+    here — history for a deleted variant remains queryable by id if needed."""
+    conn.execute("DELETE FROM exercises WHERE variant_id = ?", (variant_id,))
+    conn.execute("DELETE FROM session_variants WHERE id = ?", (variant_id,))
+    conn.commit()
 
 
 # ---------------------------------------------------------------------------
