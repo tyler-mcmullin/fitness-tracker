@@ -2,7 +2,7 @@ import toga
 from toga.style import Pack
 from toga.style.pack import COLUMN, ROW
 
-from splitsaver.database import create_session, get_sessions, delete_session
+from splitsaver.database import create_session, get_sessions, delete_session, get_variants
 
 
 class SessionsScreen:
@@ -40,7 +40,7 @@ class SessionsScreen:
         )
 
         self.table = toga.Table(
-            columns=["Name"],
+            columns=["Name", "Variants"],
             style=Pack(flex=1, margin=(0, 0, 10, 0)),
             on_select=self._on_select,
             on_activate=self._on_activate,
@@ -62,10 +62,18 @@ class SessionsScreen:
             enabled=False,
         )
 
+        self.open_button = toga.Button(
+            "Open Selected",
+            on_press=self._on_open_pressed,
+            style=Pack(margin=(0, 0, 10, 0)),
+            enabled=False,
+        )
+
         box.add(back_button)
         box.add(title)
         box.add(self.table)
         box.add(add_row)
+        box.add(self.open_button)
         box.add(self.delete_button)
         return box
 
@@ -73,9 +81,17 @@ class SessionsScreen:
         """Re-reads sessions for this split and repopulates the table."""
         sessions = get_sessions(self.conn, self.split_id)  # list of (id, name)
         self._ids_by_row = [s[0] for s in sessions]
-        self.table.data = [(s[1],) for s in sessions]
+
+        rows = []
+        for session_id, name in sessions:
+            variant_count = len(get_variants(self.conn, session_id))
+            dots = "\u25cf" * variant_count  # one dot per variant; blank if none yet
+            rows.append((name, dots))
+        self.table.data = rows
+
         self.selected_session_id = None
         self.delete_button.enabled = False
+        self.open_button.enabled = False
 
     # -----------------------------------------------------------------
     # Event handlers
@@ -95,11 +111,20 @@ class SessionsScreen:
         if widget.selection is None:
             self.selected_session_id = None
             self.delete_button.enabled = False
+            self.open_button.enabled = False
             return
 
         row_index = self.table.data.index(widget.selection)
         self.selected_session_id = self._ids_by_row[row_index]
         self.delete_button.enabled = True
+        self.open_button.enabled = True
+
+    def _on_open_pressed(self, widget):
+        if self.selected_session_id is None:
+            return
+        row_index = self._ids_by_row.index(self.selected_session_id)
+        session_name = self.table.data[row_index].name
+        self.on_open_session(self.selected_session_id, session_name)
 
     def _on_activate(self, widget, row):
         row_index = self.table.data.index(row)

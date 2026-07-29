@@ -4,10 +4,13 @@ from toga.style.pack import COLUMN, ROW
 
 from splitsaver.database import create_variant, get_variants, delete_variant
 
+DOT_FILLED = "\u25cf"   # ●
+DOT_EMPTY = "\u25cb"    # ○
+
 
 class VariantsScreen:
-    """Shows the variants (e.g. 'A', 'B') under one session, as tabs.
-    Each tab has a button to open that variant's exercises and a button to delete it."""
+    """Shows the variants (e.g. 'A', 'B') under one session, one at a time,
+    with left/right arrow buttons and a dot indicator to page between them."""
 
     def __init__(self, conn, window, session_id, session_name, on_back, on_open_variant):
         """
@@ -24,6 +27,9 @@ class VariantsScreen:
         self.on_back = on_back
         self.on_open_variant = on_open_variant
 
+        self.variants = []       # list of (id, name), refreshed from the db
+        self.current_index = 0
+
         self.box = self._build()
         self.refresh()
 
@@ -39,12 +45,31 @@ class VariantsScreen:
             style=Pack(margin=(0, 0, 10, 0), font_size=18, font_weight="bold"),
         )
 
-        self.tab_container = toga.OptionContainer(style=Pack(flex=1, margin=(0, 0, 10, 0)))
+        # Pager: [ < ]  Variant Name  [ > ]
+        pager_row = toga.Box(style=Pack(direction=ROW, margin=(0, 0, 5, 0), alignment="center"))
+        self.left_arrow = toga.Button("<", on_press=self._on_prev, style=Pack(width=40), enabled=False)
+        self.variant_name_label = toga.Label(
+            "", style=Pack(flex=1, text_align="center", font_size=16, font_weight="bold")
+        )
+        self.right_arrow = toga.Button(">", on_press=self._on_next, style=Pack(width=40), enabled=False)
+        pager_row.add(self.left_arrow)
+        pager_row.add(self.variant_name_label)
+        pager_row.add(self.right_arrow)
+
+        self.dots_label = toga.Label(
+            "", style=Pack(margin=(0, 0, 10, 0), text_align="center")
+        )
+
+        self.open_button = toga.Button(
+            "Open Exercises", on_press=self._on_open, style=Pack(margin=(0, 0, 5, 0)), enabled=False
+        )
+        self.delete_button = toga.Button(
+            "Delete This Variant", on_press=self._on_delete, style=Pack(margin=(0, 0, 10, 0)), enabled=False
+        )
 
         add_row = toga.Box(style=Pack(direction=ROW))
         self.new_variant_input = toga.TextInput(
-            placeholder="e.g. A",
-            style=Pack(flex=1, margin=(0, 5, 0, 0)),
+            placeholder="e.g. A", style=Pack(flex=1, margin=(0, 5, 0, 0))
         )
         add_button = toga.Button("Add Variant", on_press=self._on_add, style=Pack(margin=0))
         add_row.add(self.new_variant_input)
@@ -52,39 +77,57 @@ class VariantsScreen:
 
         box.add(back_button)
         box.add(title)
-        box.add(self.tab_container)
+        box.add(pager_row)
+        box.add(self.dots_label)
+        box.add(self.open_button)
+        box.add(self.delete_button)
         box.add(add_row)
         return box
 
-    def refresh(self):
-        """Re-reads variants for this session and rebuilds the tabs."""
-        variants = get_variants(self.conn, self.session_id)  # list of (id, name)
+    def refresh(self, keep_index=False):
+        """Re-reads variants for this session and redraws the current page."""
+        self.variants = get_variants(self.conn, self.session_id)  # list of (id, name)
 
-        # Clear existing tabs before rebuilding
-        while len(self.tab_container.content) > 0:
-            self.tab_container.content.remove(self.tab_container.content[0])
+        if not keep_index or self.current_index >= len(self.variants):
+            self.current_index = 0
 
-        for variant_id, name in variants:
-            tab_box = toga.Box(style=Pack(direction=COLUMN, margin=10))
+        self._render_current_page()
 
-            open_button = toga.Button(
-                "Open Exercises",
-                on_press=lambda widget, vid=variant_id, vname=name: self.on_open_variant(vid, vname),
-                style=Pack(margin=(0, 0, 10, 0)),
-            )
-            delete_button = toga.Button(
-                "Delete This Variant",
-                on_press=lambda widget, vid=variant_id: self._on_delete(vid),
-                style=Pack(margin=0),
-            )
+    def _render_current_page(self):
+        count = len(self.variants)
 
-            tab_box.add(open_button)
-            tab_box.add(delete_button)
-            self.tab_container.content.append(text=name, content=tab_box)
+        if count == 0:
+            self.variant_name_label.text = "No variants yet"
+            self.dots_label.text = ""
+            self.left_arrow.enabled = False
+            self.right_arrow.enabled = False
+            self.open_button.enabled = False
+            self.delete_button.enabled = False
+            return
+
+        variant_id, name = self.variants[self.current_index]
+        self.variant_name_label.text = name
+        self.dots_label.text = " ".join(
+            DOT_FILLED if i == self.current_index else DOT_EMPTY for i in range(count)
+        )
+        self.left_arrow.enabled = self.current_index > 0
+        self.right_arrow.enabled = self.current_index < count - 1
+        self.open_button.enabled = True
+        self.delete_button.enabled = True
 
     # -----------------------------------------------------------------
     # Event handlers
     # -----------------------------------------------------------------
+
+    def _on_prev(self, widget):
+        if self.current_index > 0:
+            self.current_index -= 1
+            self._render_current_page()
+
+    def _on_next(self, widget):
+        if self.current_index < len(self.variants) - 1:
+            self.current_index += 1
+            self._render_current_page()
 
     def _on_add(self, widget):
         name = self.new_variant_input.value.strip()
@@ -94,16 +137,31 @@ class VariantsScreen:
 
         create_variant(self.conn, self.session_id, name)
         self.new_variant_input.value = ""
-        self.refresh()
+        # Jump to the newly added variant (it's appended at the end)
+        self.current_index = len(self.variants)  # will be clamped/set correctly in refresh
+        self.refresh(keep_index=True)
 
-    def _on_delete(self, variant_id):
+    def _on_open(self, widget):
+        if not self.variants:
+            return
+        variant_id, name = self.variants[self.current_index]
+        self.on_open_variant(variant_id, name)
+
+    def _on_delete(self, widget):
+        if not self.variants:
+            return
+        variant_id, name = self.variants[self.current_index]
+
         def confirm_and_delete(window, dialog_result):
             if dialog_result:
                 delete_variant(self.conn, variant_id)
-                self.refresh()
+                # Step back a page if we just deleted the last one
+                if self.current_index > 0:
+                    self.current_index -= 1
+                self.refresh(keep_index=True)
 
         self.window.confirm_dialog(
             "Delete variant",
-            "This will permanently delete this variant and its exercise plan. Workout history stays intact. Continue?",
+            f"This will permanently delete '{name}' and its exercise plan. Workout history stays intact. Continue?",
             on_result=confirm_and_delete,
         )

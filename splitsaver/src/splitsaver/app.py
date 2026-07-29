@@ -3,6 +3,7 @@ import toga
 from splitsaver.database import init_db
 from splitsaver.screens.splits_screen import SplitsScreen
 from splitsaver.screens.sessions_screen import SessionsScreen
+from splitsaver.screens.variants_screen import VariantsScreen
 
 
 class SplitSaver(toga.App):
@@ -26,21 +27,34 @@ class SplitSaver(toga.App):
         self.main_window.content = screen.box
 
     def show_sessions_screen(self, split_id, split_name):
+        self.current_split_id = split_id
+        self.current_split_name = split_name
         screen = SessionsScreen(
             self.conn,
             self.main_window,
             split_id,
             split_name,
             on_back=self.show_splits_screen,
-            on_open_session=self.show_variants_screen_stub,
+            on_open_session=self.show_variants_screen,
         )
         self.main_window.content = screen.box
 
-    def show_variants_screen_stub(self, session_id, session_name):
-        """Placeholder until the Variants screen exists."""
+    def show_variants_screen(self, session_id, session_name):
+        screen = VariantsScreen(
+            self.conn,
+            self.main_window,
+            session_id,
+            session_name,
+            on_back=lambda: self.show_sessions_screen(self.current_split_id, self.current_split_name),
+            on_open_variant=self.show_exercises_screen_stub,
+        )
+        self.main_window.content = screen.box
+
+    def show_exercises_screen_stub(self, variant_id, variant_name):
+        """Placeholder until the Exercises screen exists."""
         self.main_window.info_dialog(
-            "Open session",
-            f"Opening '{session_name}' (id={session_id}) — Variants screen not built yet.",
+            "Open variant",
+            f"Opening '{variant_name}' (id={variant_id}) — Exercises screen not built yet.",
         )
 
 
