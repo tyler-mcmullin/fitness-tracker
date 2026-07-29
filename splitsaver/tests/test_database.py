@@ -13,6 +13,7 @@ from splitsaver.database import (
     create_session,
     get_sessions,
     rename_session,
+    delete_session,
     create_variant,
     get_variants,
     rename_variant,
@@ -136,6 +137,30 @@ def test_rename_session(conn):
  
     sessions = get_sessions(conn, split_id)
     assert sessions[0][1] == "Lower Body"
+
+
+def test_delete_session_removes_session_and_everything_under_it(conn):
+    split_id = create_split(conn, "Push Pull Legs")
+    session_id = create_session(conn, split_id, "Legs")
+    variant_id = create_variant(conn, session_id, "A")
+    add_exercise(conn, variant_id, "Squat", sets=3, reps=8, weight=20)
+ 
+    delete_session(conn, session_id)
+ 
+    assert get_sessions(conn, split_id) == []
+    assert conn.execute("SELECT * FROM session_variants WHERE session_id = ?", (session_id,)).fetchall() == []
+    assert conn.execute("SELECT * FROM exercises WHERE variant_id = ?", (variant_id,)).fetchall() == []
+ 
+ 
+def test_delete_session_does_not_affect_other_sessions(conn):
+    split_id = create_split(conn, "Push Pull Legs")
+    session_id_legs = create_session(conn, split_id, "Legs")
+    session_id_push = create_session(conn, split_id, "Push")
+ 
+    delete_session(conn, session_id_legs)
+ 
+    remaining = get_sessions(conn, split_id)
+    assert [s[1] for s in remaining] == ["Push"]
 
 
 # ---------------------------------------------------------------------------
