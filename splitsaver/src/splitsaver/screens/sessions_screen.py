@@ -28,37 +28,37 @@ class SessionsScreen:
         self.refresh()
 
     def _build(self):
-        box = toga.Box(style=Pack(direction=COLUMN, padding=10))
+        box = toga.Box(style=Pack(direction=COLUMN, margin=10))
 
         back_button = toga.Button(
-            "< Splits", on_press=lambda widget: self.on_back(), style=Pack(padding=(0, 0, 10, 0))
+            "< Splits", on_press=lambda widget: self.on_back(), style=Pack(margin=(0, 0, 10, 0))
         )
 
         title = toga.Label(
             self.split_name,
-            style=Pack(padding=(0, 0, 10, 0), font_size=18, font_weight="bold"),
+            style=Pack(margin=(0, 0, 10, 0), font_size=18, font_weight="bold"),
         )
 
         self.table = toga.Table(
-            headings=["Name"],
-            style=Pack(flex=1, padding=(0, 0, 10, 0)),
+            columns=["Name"],
+            style=Pack(flex=1, margin=(0, 0, 10, 0)),
             on_select=self._on_select,
             on_activate=self._on_activate,
         )
 
-        add_row = toga.Box(style=Pack(direction=ROW, padding=(0, 0, 10, 0)))
+        add_row = toga.Box(style=Pack(direction=ROW, margin=(0, 0, 10, 0)))
         self.new_session_input = toga.TextInput(
             placeholder="e.g. Legs",
-            style=Pack(flex=1, padding=(0, 5, 0, 0)),
+            style=Pack(flex=1, margin=(0, 5, 0, 0)),
         )
-        add_button = toga.Button("Add Session", on_press=self._on_add, style=Pack(padding=0))
+        add_button = toga.Button("Add Session", on_press=self._on_add, style=Pack(margin=0))
         add_row.add(self.new_session_input)
         add_row.add(add_button)
 
         self.delete_button = toga.Button(
             "Delete Selected",
             on_press=self._on_delete,
-            style=Pack(padding=0),
+            style=Pack(margin=0),
             enabled=False,
         )
 

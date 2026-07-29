@@ -28,25 +28,25 @@ class VariantsScreen:
         self.refresh()
 
     def _build(self):
-        box = toga.Box(style=Pack(direction=COLUMN, padding=10))
+        box = toga.Box(style=Pack(direction=COLUMN, margin=10))
 
         back_button = toga.Button(
-            "< Sessions", on_press=lambda widget: self.on_back(), style=Pack(padding=(0, 0, 10, 0))
+            "< Sessions", on_press=lambda widget: self.on_back(), style=Pack(margin=(0, 0, 10, 0))
         )
 
         title = toga.Label(
             self.session_name,
-            style=Pack(padding=(0, 0, 10, 0), font_size=18, font_weight="bold"),
+            style=Pack(margin=(0, 0, 10, 0), font_size=18, font_weight="bold"),
         )
 
-        self.tab_container = toga.OptionContainer(style=Pack(flex=1, padding=(0, 0, 10, 0)))
+        self.tab_container = toga.OptionContainer(style=Pack(flex=1, margin=(0, 0, 10, 0)))
 
         add_row = toga.Box(style=Pack(direction=ROW))
         self.new_variant_input = toga.TextInput(
             placeholder="e.g. A",
-            style=Pack(flex=1, padding=(0, 5, 0, 0)),
+            style=Pack(flex=1, margin=(0, 5, 0, 0)),
         )
-        add_button = toga.Button("Add Variant", on_press=self._on_add, style=Pack(padding=0))
+        add_button = toga.Button("Add Variant", on_press=self._on_add, style=Pack(margin=0))
         add_row.add(self.new_variant_input)
         add_row.add(add_button)
 
@@ -65,17 +65,17 @@ class VariantsScreen:
             self.tab_container.content.remove(self.tab_container.content[0])
 
         for variant_id, name in variants:
-            tab_box = toga.Box(style=Pack(direction=COLUMN, padding=10))
+            tab_box = toga.Box(style=Pack(direction=COLUMN, margin=10))
 
             open_button = toga.Button(
                 "Open Exercises",
                 on_press=lambda widget, vid=variant_id, vname=name: self.on_open_variant(vid, vname),
-                style=Pack(padding=(0, 0, 10, 0)),
+                style=Pack(margin=(0, 0, 10, 0)),
             )
             delete_button = toga.Button(
                 "Delete This Variant",
                 on_press=lambda widget, vid=variant_id: self._on_delete(vid),
-                style=Pack(padding=0),
+                style=Pack(margin=0),
             )
 
             tab_box.add(open_button)
