@@ -46,7 +46,7 @@ class VariantsScreen:
         )
 
         # Pager: [ < ]  Variant Name  [ > ]
-        pager_row = toga.Box(style=Pack(direction=ROW, margin=(0, 0, 5, 0), alignment="center"))
+        pager_row = toga.Box(style=Pack(direction=ROW, margin=(0, 0, 5, 0), align_items="center"))
         self.left_arrow = toga.Button("<", on_press=self._on_prev, style=Pack(width=40), enabled=False)
         self.variant_name_label = toga.Label(
             "", style=Pack(flex=1, text_align="center", font_size=16, font_weight="bold")
