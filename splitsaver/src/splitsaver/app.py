@@ -50,11 +50,13 @@ class SplitSaver(toga.App):
         )
         self.main_window.content = screen.box
 
-    def show_exercises_screen_stub(self, variant_id, variant_name):
+    async def show_exercises_screen_stub(self, variant_id, variant_name):
         """Placeholder until the Exercises screen exists."""
-        self.main_window.info_dialog(
-            "Open variant",
-            f"Opening '{variant_name}' (id={variant_id}) — Exercises screen not built yet.",
+        await self.main_window.dialog(
+            toga.InfoDialog(
+                "Open variant",
+                f"Opening '{variant_name}' (id={variant_id}) — Exercises screen not built yet.",
+            )
         )
 
 

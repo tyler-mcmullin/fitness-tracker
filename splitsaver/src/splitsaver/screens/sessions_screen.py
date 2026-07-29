@@ -97,10 +97,10 @@ class SessionsScreen:
     # Event handlers
     # -----------------------------------------------------------------
 
-    def _on_add(self, widget):
+    async def _on_add(self, widget):
         name = self.new_session_input.value.strip()
         if not name:
-            self.window.info_dialog("Missing name", "Enter a name for the session first.")
+            await self.window.dialog(toga.InfoDialog("Missing name", "Enter a name for the session first."))
             return
 
         create_session(self.conn, self.split_id, name)
@@ -132,17 +132,16 @@ class SessionsScreen:
         session_name = row.name
         self.on_open_session(session_id, session_name)
 
-    def _on_delete(self, widget):
+    async def _on_delete(self, widget):
         if self.selected_session_id is None:
             return
 
-        def confirm_and_delete(window, dialog_result):
-            if dialog_result:
-                delete_session(self.conn, self.selected_session_id)
-                self.refresh()
-
-        self.window.confirm_dialog(
-            "Delete session",
-            "This will permanently delete this session, its variants, and its exercise plans. Workout history stays intact. Continue?",
-            on_result=confirm_and_delete,
+        confirmed = await self.window.dialog(
+            toga.ConfirmDialog(
+                "Delete session",
+                "This will permanently delete this session, its variants, and its exercise plans. Workout history stays intact. Continue?",
+            )
         )
+        if confirmed:
+            delete_session(self.conn, self.selected_session_id)
+            self.refresh()

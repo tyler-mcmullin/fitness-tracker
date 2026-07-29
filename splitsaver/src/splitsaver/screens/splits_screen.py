@@ -53,9 +53,17 @@ class SplitsScreen:
             enabled=False,
         )
 
+        self.open_button = toga.Button(
+            "Open Selected",
+            on_press=self._on_open_pressed,
+            style=Pack(margin=(0, 0, 10, 0)),
+            enabled=False,
+        )
+
         box.add(title)
         box.add(self.table)
         box.add(add_row)
+        box.add(self.open_button)
         box.add(self.delete_button)
         return box
 
@@ -66,15 +74,16 @@ class SplitsScreen:
         self.table.data = [(s[1],) for s in splits]
         self.selected_split_id = None
         self.delete_button.enabled = False
+        self.open_button.enabled = False
 
     # -----------------------------------------------------------------
     # Event handlers
     # -----------------------------------------------------------------
 
-    def _on_add(self, widget):
+    async def _on_add(self, widget):
         name = self.new_split_input.value.strip()
         if not name:
-            self.window.info_dialog("Missing name", "Enter a name for the split first.")
+            await self.window.dialog(toga.InfoDialog("Missing name", "Enter a name for the split first."))
             return
 
         create_split(self.conn, name)
@@ -85,11 +94,20 @@ class SplitsScreen:
         if widget.selection is None:
             self.selected_split_id = None
             self.delete_button.enabled = False
+            self.open_button.enabled = False
             return
 
         row_index = self.table.data.index(widget.selection)
         self.selected_split_id = self._ids_by_row[row_index]
         self.delete_button.enabled = True
+        self.open_button.enabled = True
+
+    def _on_open_pressed(self, widget):
+        if self.selected_split_id is None:
+            return
+        row_index = self._ids_by_row.index(self.selected_split_id)
+        split_name = self.table.data[row_index].name
+        self.on_open_split(self.selected_split_id, split_name)
 
     def _on_activate(self, widget, row):
         row_index = self.table.data.index(row)
@@ -97,17 +115,16 @@ class SplitsScreen:
         split_name = row.name
         self.on_open_split(split_id, split_name)
 
-    def _on_delete(self, widget):
+    async def _on_delete(self, widget):
         if self.selected_split_id is None:
             return
 
-        def confirm_and_delete(window, dialog_result):
-            if dialog_result:
-                delete_split(self.conn, self.selected_split_id)
-                self.refresh()
-
-        self.window.confirm_dialog(
-            "Delete split",
-            "This will permanently delete this split, its sessions, and its exercise plans. Workout history stays intact. Continue?",
-            on_result=confirm_and_delete,
+        confirmed = await self.window.dialog(
+            toga.ConfirmDialog(
+                "Delete split",
+                "This will permanently delete this split, its sessions, and its exercise plans. Workout history stays intact. Continue?",
+            )
         )
+        if confirmed:
+            delete_split(self.conn, self.selected_split_id)
+            self.refresh()

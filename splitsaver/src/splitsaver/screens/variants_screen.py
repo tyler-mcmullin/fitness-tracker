@@ -129,10 +129,10 @@ class VariantsScreen:
             self.current_index += 1
             self._render_current_page()
 
-    def _on_add(self, widget):
+    async def _on_add(self, widget):
         name = self.new_variant_input.value.strip()
         if not name:
-            self.window.info_dialog("Missing name", "Enter a name for the variant first (e.g. 'A').")
+            await self.window.dialog(toga.InfoDialog("Missing name", "Enter a name for the variant first (e.g. 'A')."))
             return
 
         create_variant(self.conn, self.session_id, name)
@@ -141,27 +141,26 @@ class VariantsScreen:
         self.current_index = len(self.variants)  # will be clamped/set correctly in refresh
         self.refresh(keep_index=True)
 
-    def _on_open(self, widget):
+    async def _on_open(self, widget):
         if not self.variants:
             return
         variant_id, name = self.variants[self.current_index]
-        self.on_open_variant(variant_id, name)
+        await self.on_open_variant(variant_id, name)
 
-    def _on_delete(self, widget):
+    async def _on_delete(self, widget):
         if not self.variants:
             return
         variant_id, name = self.variants[self.current_index]
 
-        def confirm_and_delete(window, dialog_result):
-            if dialog_result:
-                delete_variant(self.conn, variant_id)
-                # Step back a page if we just deleted the last one
-                if self.current_index > 0:
-                    self.current_index -= 1
-                self.refresh(keep_index=True)
-
-        self.window.confirm_dialog(
-            "Delete variant",
-            f"This will permanently delete '{name}' and its exercise plan. Workout history stays intact. Continue?",
-            on_result=confirm_and_delete,
+        confirmed = await self.window.dialog(
+            toga.ConfirmDialog(
+                "Delete variant",
+                f"This will permanently delete '{name}' and its exercise plan. Workout history stays intact. Continue?",
+            )
         )
+        if confirmed:
+            delete_variant(self.conn, variant_id)
+            # Step back a page if we just deleted the last one
+            if self.current_index > 0:
+                self.current_index -= 1
+            self.refresh(keep_index=True)
