@@ -17,6 +17,26 @@ DOT_FILLED = "\u25cf"   # ●
 DOT_EMPTY = "\u25cb"    # ○
 
 
+def _format_weight(value):
+    """Formats a weight for display: whole numbers show with no decimal (25),
+    anything with a fractional part keeps it (22.5)."""
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return "0"
+    if f == int(f):
+        return str(int(f))
+    return str(f)
+
+
+def _parse_weight(text):
+    """Parses a weight field's text back into a float. Falls back to 0 on bad input."""
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 class VariantsScreen:
     """Shows the variants (e.g. 'A', 'B') under one session, one at a time,
     with left/right arrow buttons and a dot indicator to page between them.
@@ -168,8 +188,8 @@ class VariantsScreen:
             sets_input = toga.NumberInput(
                 value=sets, min=1, step=1, style=Pack(width=50, margin=(0, 5, 0, 0))
             )
-            weight_input = toga.NumberInput(
-                value=weight, min=0, step=2.5, style=Pack(width=70, margin=(0, 5, 0, 0))
+            weight_input = toga.TextInput(
+                value=_format_weight(weight), style=Pack(width=70, margin=(0, 5, 0, 0))
             )
             reps_input = toga.NumberInput(
                 value=reps, min=0, step=1, style=Pack(width=60, margin=(0, 5, 0, 0))
@@ -226,7 +246,7 @@ class VariantsScreen:
             if inputs is None:
                 return
             sets = int(inputs["sets"].value or 1)
-            weight = float(inputs["weight"].value or 0)
+            weight = _parse_weight(inputs["weight"].value)
             reps = int(inputs["reps"].value or 0)
             update_exercises(self.conn, variant_id, name, sets=sets, reps=reps, weight=weight)
         return handler
@@ -262,7 +282,7 @@ class VariantsScreen:
 
         exercise_entries = []
         for exercise_id, inputs in self._exercise_inputs.items():
-            weight = float(inputs["weight"].value or 0)
+            weight = _parse_weight(inputs["weight"].value)
             reps = int(inputs["reps"].value or 0)
             sets = int(inputs["sets"].value or 1)
             exercise_entries.append({
