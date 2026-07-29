@@ -2,7 +2,16 @@ import toga
 from toga.style import Pack
 from toga.style.pack import COLUMN, ROW
 
-from splitsaver.database import create_variant, get_variants, delete_variant
+from splitsaver.database import (
+    create_variant,
+    get_variants,
+    delete_variant,
+    add_exercise,
+    get_current_state,
+    delete_exercise,
+    update_exercises,
+    log_workout,
+)
 
 DOT_FILLED = "\u25cf"   # ●
 DOT_EMPTY = "\u25cb"    # ○
@@ -10,25 +19,26 @@ DOT_EMPTY = "\u25cb"    # ○
 
 class VariantsScreen:
     """Shows the variants (e.g. 'A', 'B') under one session, one at a time,
-    with left/right arrow buttons and a dot indicator to page between them."""
+    with left/right arrow buttons and a dot indicator to page between them.
+    Each variant's exercises are listed inline below, with weight/reps editable
+    directly, plus a button to log the workout to history."""
 
-    def __init__(self, conn, window, session_id, session_name, on_back, on_open_variant):
+    def __init__(self, conn, window, session_id, session_name, on_back):
         """
         conn: sqlite3 connection
         window: the toga.MainWindow, needed for dialogs
         session_id, session_name: the session whose variants this screen shows
         on_back: callback() -> called to return to the Sessions screen
-        on_open_variant: callback(variant_id, variant_name) -> called when "Open Exercises" is pressed
         """
         self.conn = conn
         self.window = window
         self.session_id = session_id
         self.session_name = session_name
         self.on_back = on_back
-        self.on_open_variant = on_open_variant
 
         self.variants = []       # list of (id, name), refreshed from the db
         self.current_index = 0
+        self._exercise_inputs = {}  # exercise_id -> {"weight": widget, "reps": widget}
 
         self.box = self._build()
         self.refresh()
@@ -56,33 +66,54 @@ class VariantsScreen:
         pager_row.add(self.variant_name_label)
         pager_row.add(self.right_arrow)
 
-        self.dots_label = toga.Label(
-            "", style=Pack(margin=(0, 0, 10, 0), text_align="center")
+        self.dots_label = toga.Label("", style=Pack(margin=(0, 0, 10, 0), text_align="center"))
+
+        # Exercise list for the current variant
+        self.exercise_list_box = toga.Box(style=Pack(direction=COLUMN, margin=(0, 0, 10, 0)))
+        exercise_scroll = toga.ScrollContainer(
+            content=self.exercise_list_box, style=Pack(flex=1, margin=(0, 0, 10, 0)), horizontal=False
         )
 
-        self.open_button = toga.Button(
-            "Open Exercises", on_press=self._on_open, style=Pack(margin=(0, 0, 5, 0)), enabled=False
+        add_exercise_row = toga.Box(style=Pack(direction=ROW, margin=(0, 0, 10, 0)))
+        self.new_exercise_input = toga.TextInput(
+            placeholder="e.g. Squat", style=Pack(flex=1, margin=(0, 5, 0, 0))
         )
-        self.delete_button = toga.Button(
-            "Delete This Variant", on_press=self._on_delete, style=Pack(margin=(0, 0, 10, 0)), enabled=False
+        add_exercise_button = toga.Button(
+            "Add Exercise", on_press=self._on_add_exercise, style=Pack(margin=0)
+        )
+        add_exercise_row.add(self.new_exercise_input)
+        add_exercise_row.add(add_exercise_button)
+
+        self.log_button = toga.Button(
+            "Log Workout", on_press=self._on_log_workout, style=Pack(margin=(0, 0, 10, 0)), enabled=False
+        )
+        self.delete_variant_button = toga.Button(
+            "Delete This Variant", on_press=self._on_delete_variant, style=Pack(margin=(0, 0, 10, 0)),
+            enabled=False,
         )
 
-        add_row = toga.Box(style=Pack(direction=ROW))
+        add_variant_row = toga.Box(style=Pack(direction=ROW))
         self.new_variant_input = toga.TextInput(
             placeholder="e.g. A", style=Pack(flex=1, margin=(0, 5, 0, 0))
         )
-        add_button = toga.Button("Add Variant", on_press=self._on_add, style=Pack(margin=0))
-        add_row.add(self.new_variant_input)
-        add_row.add(add_button)
+        add_variant_button = toga.Button("Add Variant", on_press=self._on_add_variant, style=Pack(margin=0))
+        add_variant_row.add(self.new_variant_input)
+        add_variant_row.add(add_variant_button)
 
         box.add(back_button)
         box.add(title)
         box.add(pager_row)
         box.add(self.dots_label)
-        box.add(self.open_button)
-        box.add(self.delete_button)
-        box.add(add_row)
+        box.add(exercise_scroll)
+        box.add(add_exercise_row)
+        box.add(self.log_button)
+        box.add(self.delete_variant_button)
+        box.add(add_variant_row)
         return box
+
+    # -----------------------------------------------------------------
+    # Rendering
+    # -----------------------------------------------------------------
 
     def refresh(self, keep_index=False):
         """Re-reads variants for this session and redraws the current page."""
@@ -101,8 +132,9 @@ class VariantsScreen:
             self.dots_label.text = ""
             self.left_arrow.enabled = False
             self.right_arrow.enabled = False
-            self.open_button.enabled = False
-            self.delete_button.enabled = False
+            self.log_button.enabled = False
+            self.delete_variant_button.enabled = False
+            self._render_exercises(variant_id=None)
             return
 
         variant_id, name = self.variants[self.current_index]
@@ -112,11 +144,64 @@ class VariantsScreen:
         )
         self.left_arrow.enabled = self.current_index > 0
         self.right_arrow.enabled = self.current_index < count - 1
-        self.open_button.enabled = True
-        self.delete_button.enabled = True
+        self.log_button.enabled = True
+        self.delete_variant_button.enabled = True
+
+        self._render_exercises(variant_id)
+
+    def _render_exercises(self, variant_id):
+        """Rebuilds the inline exercise list for the given variant."""
+        # Clear existing rows
+        while len(self.exercise_list_box.children) > 0:
+            self.exercise_list_box.remove(self.exercise_list_box.children[0])
+        self._exercise_inputs = {}
+
+        if variant_id is None:
+            return
+
+        exercises = get_current_state(self.conn, variant_id)  # (id, name, sets, reps, weight)
+        for exercise_id, name, sets, reps, weight in exercises:
+            row = toga.Box(style=Pack(direction=ROW, margin=(0, 0, 8, 0), align_items="center"))
+
+            name_label = toga.Label(name, style=Pack(flex=1))
+
+            sets_input = toga.NumberInput(
+                value=sets, min=1, step=1, style=Pack(width=50, margin=(0, 5, 0, 0))
+            )
+            weight_input = toga.NumberInput(
+                value=weight, min=0, step=2.5, style=Pack(width=70, margin=(0, 5, 0, 0))
+            )
+            reps_input = toga.NumberInput(
+                value=reps, min=0, step=1, style=Pack(width=60, margin=(0, 5, 0, 0))
+            )
+
+            on_change = self._make_on_field_change(variant_id, exercise_id, name)
+            sets_input.on_change = on_change
+            weight_input.on_change = on_change
+            reps_input.on_change = on_change
+
+            remove_button = toga.Button(
+                "Remove",
+                on_press=self._make_on_remove_exercise(exercise_id),
+                style=Pack(margin=0),
+            )
+
+            row.add(name_label)
+            row.add(sets_input)
+            row.add(toga.Label("sets", style=Pack(margin=(0, 10, 0, 0))))
+            row.add(reps_input)
+            row.add(toga.Label("reps", style=Pack(margin=(0, 10, 0, 0))))
+            row.add(weight_input)
+            row.add(toga.Label("lb", style=Pack(margin=(0, 10, 0, 0))))
+            row.add(remove_button)
+
+            self.exercise_list_box.add(row)
+            self._exercise_inputs[exercise_id] = {
+                "weight": weight_input, "reps": reps_input, "sets": sets_input, "name": name,
+            }
 
     # -----------------------------------------------------------------
-    # Event handlers
+    # Event handlers — pager
     # -----------------------------------------------------------------
 
     def _on_prev(self, widget):
@@ -129,7 +214,74 @@ class VariantsScreen:
             self.current_index += 1
             self._render_current_page()
 
-    async def _on_add(self, widget):
+    # -----------------------------------------------------------------
+    # Event handlers — exercises
+    # -----------------------------------------------------------------
+
+    def _make_on_field_change(self, variant_id, exercise_id, name):
+        """Returns an on_change handler that saves this exercise's plan
+        whenever sets, weight, or reps is edited directly in the list."""
+        def handler(widget):
+            inputs = self._exercise_inputs.get(exercise_id)
+            if inputs is None:
+                return
+            sets = int(inputs["sets"].value or 1)
+            weight = float(inputs["weight"].value or 0)
+            reps = int(inputs["reps"].value or 0)
+            update_exercises(self.conn, variant_id, name, sets=sets, reps=reps, weight=weight)
+        return handler
+
+    def _make_on_remove_exercise(self, exercise_id):
+        async def handler(widget):
+            confirmed = await self.window.dialog(
+                toga.ConfirmDialog("Remove exercise", "Remove this exercise from the plan?")
+            )
+            if confirmed:
+                delete_exercise(self.conn, exercise_id)
+                self._render_current_page()
+        return handler
+
+    async def _on_add_exercise(self, widget):
+        name = self.new_exercise_input.value.strip()
+        if not name:
+            await self.window.dialog(toga.InfoDialog("Missing name", "Enter a name for the exercise first."))
+            return
+        if not self.variants:
+            await self.window.dialog(toga.InfoDialog("No variant", "Add a variant before adding exercises."))
+            return
+
+        variant_id, _ = self.variants[self.current_index]
+        add_exercise(self.conn, variant_id, name)
+        self.new_exercise_input.value = ""
+        self._render_current_page()
+
+    async def _on_log_workout(self, widget):
+        if not self.variants:
+            return
+        variant_id, name = self.variants[self.current_index]
+
+        exercise_entries = []
+        for exercise_id, inputs in self._exercise_inputs.items():
+            weight = float(inputs["weight"].value or 0)
+            reps = int(inputs["reps"].value or 0)
+            sets = int(inputs["sets"].value or 1)
+            exercise_entries.append({
+                "name": inputs["name"],
+                "sets": [{"reps": reps, "weight": weight} for _ in range(sets)],
+            })
+
+        if not exercise_entries:
+            await self.window.dialog(toga.InfoDialog("Nothing to log", "Add an exercise first."))
+            return
+
+        log_workout(self.conn, variant_id, exercise_entries)
+        await self.window.dialog(toga.InfoDialog("Logged", f"Workout logged for '{name}'."))
+
+    # -----------------------------------------------------------------
+    # Event handlers — variants
+    # -----------------------------------------------------------------
+
+    async def _on_add_variant(self, widget):
         name = self.new_variant_input.value.strip()
         if not name:
             await self.window.dialog(toga.InfoDialog("Missing name", "Enter a name for the variant first (e.g. 'A')."))
@@ -137,17 +289,10 @@ class VariantsScreen:
 
         create_variant(self.conn, self.session_id, name)
         self.new_variant_input.value = ""
-        # Jump to the newly added variant (it's appended at the end)
-        self.current_index = len(self.variants)  # will be clamped/set correctly in refresh
+        self.current_index = len(self.variants)  # jump to the newly added variant
         self.refresh(keep_index=True)
 
-    async def _on_open(self, widget):
-        if not self.variants:
-            return
-        variant_id, name = self.variants[self.current_index]
-        await self.on_open_variant(variant_id, name)
-
-    async def _on_delete(self, widget):
+    async def _on_delete_variant(self, widget):
         if not self.variants:
             return
         variant_id, name = self.variants[self.current_index]
@@ -160,7 +305,6 @@ class VariantsScreen:
         )
         if confirmed:
             delete_variant(self.conn, variant_id)
-            # Step back a page if we just deleted the last one
             if self.current_index > 0:
                 self.current_index -= 1
             self.refresh(keep_index=True)
