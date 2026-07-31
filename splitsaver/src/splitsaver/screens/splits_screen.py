@@ -37,7 +37,7 @@ class SplitsScreen:
 
         add_row = toga.Box(style=Pack(direction=ROW))
         self.new_split_input = toga.TextInput(
-            placeholder="e.g. Push Pull Legs",
+            placeholder="ex: Push Pull Legs",
             style=Pack(flex=1, margin=(0, 5, 0, 0)),
         )
         add_button = toga.Button("Add Split", on_press=self._on_add, style=Pack(margin=0))

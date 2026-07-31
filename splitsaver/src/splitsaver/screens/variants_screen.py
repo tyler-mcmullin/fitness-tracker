@@ -102,7 +102,7 @@ class VariantsScreen:
 
         add_exercise_row = toga.Box(style=Pack(direction=ROW, margin=(0, 0, 10, 0)))
         self.new_exercise_input = toga.TextInput(
-            placeholder="e.g. Squat", style=Pack(flex=1, margin=(0, 5, 0, 0))
+            placeholder="ex: Squat", style=Pack(flex=1, margin=(0, 5, 0, 0))
         )
         add_exercise_button = toga.Button(
             "Add Exercise", on_press=self._on_add_exercise, style=Pack(margin=0)
@@ -123,7 +123,7 @@ class VariantsScreen:
 
         add_variant_row = toga.Box(style=Pack(direction=ROW))
         self.new_variant_input = toga.TextInput(
-            placeholder="e.g. A", style=Pack(flex=1, margin=(0, 5, 0, 0))
+            placeholder="ex: Push Day 2", style=Pack(flex=1, margin=(0, 5, 0, 0))
         )
         add_variant_button = toga.Button("Add Variant", on_press=self._on_add_variant, style=Pack(margin=0))
         add_variant_row.add(self.new_variant_input)
@@ -341,7 +341,7 @@ class VariantsScreen:
     async def _on_add_variant(self, widget):
         name = self.new_variant_input.value.strip()
         if not name:
-            await self.window.dialog(toga.InfoDialog("Missing name", "Enter a name for the variant first (e.g. 'A')."))
+            await self.window.dialog(toga.InfoDialog("Missing name", "Enter a name for the variant first (ex: 'Push Day 2')."))
             return
 
         create_variant(self.conn, self.session_id, name)
