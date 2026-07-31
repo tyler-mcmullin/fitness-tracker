@@ -345,7 +345,9 @@ class VariantsScreen:
             exercise_entries.append({
                 "name": inputs["name"],
                 "unit": unit,
-                "sets": [{"reps": reps, "weight": weight} for _ in range(sets)],
+                "sets": sets,
+                "reps": reps,
+                "weight": weight,
             })
 
         if not exercise_entries:

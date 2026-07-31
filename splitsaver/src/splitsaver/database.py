@@ -56,27 +56,20 @@ def init_db(path):
             FOREIGN KEY (variant_id) REFERENCES session_variants(id)
         )
     """)
+    # One row per exercise per workout (not per individual set) — sets is a
+    # count, reps/weight/unit apply to all sets of that exercise that day.
     conn.execute("""
-        CREATE TABLE IF NOT EXISTS logged_sets (
+        CREATE TABLE IF NOT EXISTS logged_exercises (
             id INTEGER PRIMARY KEY,
             workout_log_id INTEGER NOT NULL,
             exercise_name TEXT NOT NULL,
-            set_number INTEGER,
+            sets INTEGER,
             reps INTEGER,
             weight REAL,
             unit TEXT NOT NULL DEFAULT 'lb',   -- preserved as of when it was logged
             FOREIGN KEY (workout_log_id) REFERENCES workout_logs(id)
         )
     """)
-
-    # Migration: older databases created before 'unit' existed won't have the
-    # column yet (CREATE TABLE IF NOT EXISTS doesn't retroactively add columns).
-    # Add it in place so existing data isn't lost.
-    for table in ("exercises", "logged_sets"):
-        try:
-            conn.execute(f"ALTER TABLE {table} ADD COLUMN unit TEXT NOT NULL DEFAULT 'lb'")
-        except sqlite3.OperationalError:
-            pass  # column already exists
 
     conn.commit()
     return conn
@@ -218,7 +211,7 @@ def rename_variant(conn, variant_id, new_name):
 
 def delete_variant(conn, variant_id):
     """Deletes a variant and its exercise plan. Workout history is untouched,
-    since workout_logs/logged_sets reference variant_id but are never cleaned up
+    since workout_logs/logged_exercises reference variant_id but are never cleaned up
     here — history for a deleted variant remains queryable by id if needed."""
     conn.execute("DELETE FROM exercises WHERE variant_id = ?", (variant_id,))
     conn.execute("DELETE FROM session_variants WHERE id = ?", (variant_id,))
@@ -265,15 +258,15 @@ def get_current_state(conn, variant_id):
 
 
 def delete_exercise(conn, exercise_id):
-    """Removes an exercise from the plan. Does not affect past logged_sets history,
-    since logged_sets stores exercise_name as free text, decoupled from this table."""
+    """Removes an exercise from the plan. Does not affect past logged_exercises history,
+    since logged_exercises stores exercise_name as free text, decoupled from this table."""
     conn.execute("DELETE FROM exercises WHERE id = ?", (exercise_id,))
     conn.commit()
 
 
 def rename_exercise(conn, exercise_id, new_name):
     """Renames an exercise in the plan (e.g. 'Squat' -> 'Front Squat').
-    Past logged_sets keep the OLD name, since exercise_name there is free text —
+    Past logged_exercises keep the OLD name, since exercise_name there is free text —
     your history stays accurate to what it was actually called at the time."""
     conn.execute(
         "UPDATE exercises SET name = ? WHERE id = ?",
@@ -287,10 +280,10 @@ def rename_exercise(conn, exercise_id, new_name):
 # ---------------------------------------------------------------------------
 
 def log_workout(conn, variant_id, exercise_entries):
-    """Saves workout history.
+    """Saves workout history — one row per exercise, not per individual set.
 
     exercise_entries: list of dicts, e.g.
-        [{"name": "Squat", "unit": "lb", "sets": [{"reps": 8, "weight": 25}, ...]}]
+        [{"name": "Squat", "unit": "lb", "sets": 3, "reps": 8, "weight": 25}]
     "unit" is optional per entry and defaults to 'lb' if omitted.
     """
     cur = conn.cursor()
@@ -301,14 +294,19 @@ def log_workout(conn, variant_id, exercise_entries):
     workout_log_id = cur.lastrowid
 
     for exercise in exercise_entries:
-        unit = exercise.get("unit", "lb")
-        for i, s in enumerate(exercise["sets"], start=1):
-            cur.execute(
-                """INSERT INTO logged_sets
-                   (workout_log_id, exercise_name, set_number, reps, weight, unit)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (workout_log_id, exercise["name"], i, s["reps"], s["weight"], unit)
+        cur.execute(
+            """INSERT INTO logged_exercises
+               (workout_log_id, exercise_name, sets, reps, weight, unit)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                workout_log_id,
+                exercise["name"],
+                exercise["sets"],
+                exercise["reps"],
+                exercise["weight"],
+                exercise.get("unit", "lb"),
             )
+        )
     conn.commit()
     return workout_log_id
 
@@ -324,13 +322,14 @@ def get_workout_history(conn, variant_id):
     return cur.fetchall()
 
 
-def get_logged_sets(conn, workout_log_id):
-    """Returns all sets recorded for a specific past workout.
-    Each row is (exercise_name, set_number, reps, weight, unit)."""
+def get_logged_exercises(conn, workout_log_id):
+    """Returns all exercises recorded for a specific past workout — one row
+    per exercise, not per individual set.
+    Each row is (exercise_name, sets, reps, weight, unit)."""
     cur = conn.execute(
-        """SELECT exercise_name, set_number, reps, weight, unit
-           FROM logged_sets
-           WHERE workout_log_id = ? ORDER BY exercise_name, set_number""",
+        """SELECT exercise_name, sets, reps, weight, unit
+           FROM logged_exercises
+           WHERE workout_log_id = ? ORDER BY exercise_name""",
         (workout_log_id,)
     )
     return cur.fetchall()
@@ -341,26 +340,26 @@ def get_logged_exercise_names(conn, variant_id):
     Useful for a history browser, since a deleted or renamed exercise can still
     have history worth viewing even though it's no longer in the current plan."""
     cur = conn.execute(
-        """SELECT DISTINCT ls.exercise_name
-           FROM logged_sets ls
-           JOIN workout_logs wl ON wl.id = ls.workout_log_id
+        """SELECT DISTINCT le.exercise_name
+           FROM logged_exercises le
+           JOIN workout_logs wl ON wl.id = le.workout_log_id
            WHERE wl.variant_id = ?
-           ORDER BY ls.exercise_name""",
+           ORDER BY le.exercise_name""",
         (variant_id,)
     )
     return [row[0] for row in cur.fetchall()]
 
 
 def get_exercise_history(conn, variant_id, exercise_name):
-    """Returns every logged set for one specific exercise across all past workouts —
-    useful for a progress-over-time view (e.g. a weight-over-time chart for Squat).
-    Each row is (date, set_number, reps, weight, unit)."""
+    """Returns every logged entry for one specific exercise across all past workouts —
+    one row per workout (not per set) — useful for a progress-over-time view.
+    Each row is (date, sets, reps, weight, unit)."""
     cur = conn.execute(
-        """SELECT wl.date, ls.set_number, ls.reps, ls.weight, ls.unit
-           FROM logged_sets ls
-           JOIN workout_logs wl ON wl.id = ls.workout_log_id
-           WHERE wl.variant_id = ? AND ls.exercise_name = ?
-           ORDER BY wl.date ASC, ls.set_number ASC""",
+        """SELECT wl.date, le.sets, le.reps, le.weight, le.unit
+           FROM logged_exercises le
+           JOIN workout_logs wl ON wl.id = le.workout_log_id
+           WHERE wl.variant_id = ? AND le.exercise_name = ?
+           ORDER BY wl.date ASC""",
         (variant_id, exercise_name)
     )
     return cur.fetchall()

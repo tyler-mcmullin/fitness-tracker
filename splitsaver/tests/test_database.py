@@ -31,7 +31,7 @@ from splitsaver.database import (
     rename_exercise,
     log_workout,
     get_workout_history,
-    get_logged_sets,
+    get_logged_exercises,
     get_exercise_history,
     get_logged_exercise_names,
     update_exercises,
@@ -61,7 +61,7 @@ def variant_with_exercise(conn):
 # ---------------------------------------------------------------------------
 
 def test_init_db_creates_all_tables(conn):
-    tables = ["splits", "sessions", "session_variants", "exercises", "workout_logs", "logged_sets"]
+    tables = ["splits", "sessions", "session_variants", "exercises", "workout_logs", "logged_exercises"]
     for table in tables:
         conn.execute(f"SELECT * FROM {table}")  # raises if missing
 
@@ -315,16 +315,16 @@ def test_delete_exercise_removes_from_plan_only(conn, variant_with_exercise):
 
     # Log a workout first so history exists
     log_workout(conn, variant_id, [
-        {"name": "Squat", "sets": [{"reps": 8, "weight": 20}]}
+        {"name": "Squat", "sets": 1, "reps": 8, "weight": 20}
     ])
 
     delete_exercise(conn, exercise_id)
 
     assert get_current_state(conn, variant_id) == []
-    # History should be untouched since logged_sets stores exercise_name as free text
+    # History should be untouched since logged_exercises stores exercise_name as free text
     history = get_workout_history(conn, variant_id)
     assert len(history) == 1
-    assert len(get_logged_sets(conn, history[0][0])) == 1
+    assert len(get_logged_exercises(conn, history[0][0])) == 1
 
 
 def test_rename_exercise_changes_the_plan(conn, variant_with_exercise):
@@ -343,13 +343,13 @@ def test_rename_exercise_does_not_change_past_history(conn, variant_with_exercis
     exercise_id = get_current_state(conn, variant_id)[0][0]
 
     log_workout(conn, variant_id, [
-        {"name": "Squat", "sets": [{"reps": 8, "weight": 20}]}
+        {"name": "Squat", "sets": 1, "reps": 8, "weight": 20}
     ])
 
     rename_exercise(conn, exercise_id, "Front Squat")
 
     history = get_workout_history(conn, variant_id)
-    logged = get_logged_sets(conn, history[0][0])
+    logged = get_logged_exercises(conn, history[0][0])
     assert logged[0][0] == "Squat"  # old name preserved in history
 
     # And querying exercise history under the NEW name finds nothing,
@@ -362,28 +362,30 @@ def test_rename_exercise_does_not_change_past_history(conn, variant_with_exercis
 # Logging workouts / history
 # ---------------------------------------------------------------------------
 
-def test_log_workout_inserts_workout_log_and_sets(conn, variant_with_exercise):
+def test_log_workout_inserts_workout_log_and_exercise_row(conn, variant_with_exercise):
     variant_id = variant_with_exercise
 
     log_workout(conn, variant_id, [
-        {"name": "Squat", "sets": [{"reps": 8, "weight": 20}] * 3}
+        {"name": "Squat", "sets": 3, "reps": 8, "weight": 20}
     ])
 
     logs = conn.execute("SELECT * FROM workout_logs WHERE variant_id = ?", (variant_id,)).fetchall()
     assert len(logs) == 1
 
-    sets = conn.execute(
-        "SELECT * FROM logged_sets WHERE workout_log_id = ?", (logs[0][0],)
+    # One row for the whole exercise — not one row per set
+    rows = conn.execute(
+        "SELECT * FROM logged_exercises WHERE workout_log_id = ?", (logs[0][0],)
     ).fetchall()
-    assert len(sets) == 3
-    assert all(row[5] == 20 for row in sets)  # weight column
+    assert len(rows) == 1
+    assert rows[0][3] == 3   # sets column
+    assert rows[0][5] == 20  # weight column
 
 
 def test_log_workout_does_not_change_exercises_table(conn, variant_with_exercise):
     variant_id = variant_with_exercise
 
     log_workout(conn, variant_id, [
-        {"name": "Squat", "sets": [{"reps": 8, "weight": 25}] * 3}  # did MORE than planned
+        {"name": "Squat", "sets": 3, "reps": 8, "weight": 25}  # did MORE than planned
     ])
 
     row = conn.execute(
@@ -395,23 +397,24 @@ def test_log_workout_does_not_change_exercises_table(conn, variant_with_exercise
 
 def test_get_workout_history_orders_most_recent_first(conn, variant_with_exercise):
     variant_id = variant_with_exercise
-    log_workout(conn, variant_id, [{"name": "Squat", "sets": [{"reps": 8, "weight": 20}]}])
-    log_workout(conn, variant_id, [{"name": "Squat", "sets": [{"reps": 8, "weight": 25}]}])
+    log_workout(conn, variant_id, [{"name": "Squat", "sets": 3, "reps": 8, "weight": 20}])
+    log_workout(conn, variant_id, [{"name": "Squat", "sets": 3, "reps": 8, "weight": 25}])
 
     history = get_workout_history(conn, variant_id)
     assert len(history) == 2  # both logged, same date is fine — id DESC breaks the tie
 
 
-def test_get_logged_sets_returns_correct_rows(conn, variant_with_exercise):
+def test_get_logged_exercises_returns_correct_rows(conn, variant_with_exercise):
     variant_id = variant_with_exercise
     log_id = log_workout(conn, variant_id, [
-        {"name": "Squat", "sets": [{"reps": 8, "weight": 20}, {"reps": 6, "weight": 22}]}
+        {"name": "Squat", "sets": 4, "reps": 8, "weight": 20},
+        {"name": "Leg Press", "sets": 3, "reps": 10, "weight": 90},
     ])
 
-    sets = get_logged_sets(conn, log_id)
-    assert sets == [
-        ("Squat", 1, 8, 20, "lb"),
-        ("Squat", 2, 6, 22, "lb"),
+    rows = get_logged_exercises(conn, log_id)
+    assert rows == [
+        ("Leg Press", 3, 10, 90, "lb"),
+        ("Squat", 4, 8, 20, "lb"),
     ]
 
 
@@ -421,17 +424,17 @@ def test_log_workout_records_unit_per_exercise(conn):
     variant_id = get_variants(conn, session_id)[0][0]
 
     log_id = log_workout(conn, variant_id, [
-        {"name": "Plank", "unit": "sec", "sets": [{"reps": 1, "weight": 60}]}
+        {"name": "Plank", "unit": "sec", "sets": 1, "reps": 1, "weight": 60}
     ])
 
-    sets = get_logged_sets(conn, log_id)
-    assert sets == [("Plank", 1, 1, 60, "sec")]
+    rows = get_logged_exercises(conn, log_id)
+    assert rows == [("Plank", 1, 1, 60, "sec")]
 
 
 def test_get_exercise_history_across_multiple_workouts(conn, variant_with_exercise):
     variant_id = variant_with_exercise
-    log_workout(conn, variant_id, [{"name": "Squat", "sets": [{"reps": 8, "weight": 20}] * 3}])
-    log_workout(conn, variant_id, [{"name": "Squat", "sets": [{"reps": 8, "weight": 25}] * 3}])
+    log_workout(conn, variant_id, [{"name": "Squat", "sets": 3, "reps": 8, "weight": 20}])
+    log_workout(conn, variant_id, [{"name": "Squat", "sets": 3, "reps": 8, "weight": 25}])
 
     history = get_exercise_history(conn, variant_id, "Squat")
     weights_used = {row[3] for row in history}
@@ -441,8 +444,8 @@ def test_get_exercise_history_across_multiple_workouts(conn, variant_with_exerci
 def test_get_exercise_history_ignores_other_exercises(conn, variant_with_exercise):
     variant_id = variant_with_exercise
     log_workout(conn, variant_id, [
-        {"name": "Squat", "sets": [{"reps": 8, "weight": 20}]},
-        {"name": "Leg Press", "sets": [{"reps": 10, "weight": 90}]},
+        {"name": "Squat", "sets": 3, "reps": 8, "weight": 20},
+        {"name": "Leg Press", "sets": 3, "reps": 10, "weight": 90},
     ])
 
     squat_history = get_exercise_history(conn, variant_id, "Squat")
@@ -453,11 +456,11 @@ def test_get_exercise_history_ignores_other_exercises(conn, variant_with_exercis
 def test_get_logged_exercise_names_returns_distinct_names(conn, variant_with_exercise):
     variant_id = variant_with_exercise
     log_workout(conn, variant_id, [
-        {"name": "Squat", "sets": [{"reps": 8, "weight": 20}]},
-        {"name": "Leg Press", "sets": [{"reps": 10, "weight": 90}]},
+        {"name": "Squat", "sets": 3, "reps": 8, "weight": 20},
+        {"name": "Leg Press", "sets": 3, "reps": 10, "weight": 90},
     ])
     log_workout(conn, variant_id, [
-        {"name": "Squat", "sets": [{"reps": 8, "weight": 22}]},  # logged again, shouldn't duplicate
+        {"name": "Squat", "sets": 3, "reps": 8, "weight": 22},  # logged again, shouldn't duplicate
     ])
 
     names = get_logged_exercise_names(conn, variant_id)
@@ -474,7 +477,7 @@ def test_get_logged_exercise_names_survives_exercise_deletion(conn, variant_with
     removed from the current plan, since history is decoupled from the plan."""
     variant_id = variant_with_exercise
     exercise_id = get_current_state(conn, variant_id)[0][0]
-    log_workout(conn, variant_id, [{"name": "Squat", "sets": [{"reps": 8, "weight": 20}]}])
+    log_workout(conn, variant_id, [{"name": "Squat", "sets": 3, "reps": 8, "weight": 20}])
 
     delete_exercise(conn, exercise_id)
 

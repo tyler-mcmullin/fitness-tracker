@@ -78,7 +78,7 @@ class HistoryExerciseDetailScreen:
 
             for set_number, reps, weight, unit in by_date[date]:
                 set_label = toga.Label(
-                    f"Set {set_number}: {reps} reps @ {_format_number(weight)} {unit}",
+                    f"{set_number} x {reps} reps - {_format_number(weight)} {unit}",
                     style=Pack(margin=(0, 0, 2, 10)),
                 )
                 date_box.add(set_label)
