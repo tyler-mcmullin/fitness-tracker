@@ -40,6 +40,7 @@ def init_db(path):
         current_sets INTEGER,
         current_reps INTEGER,
         current_weight REAL,
+        unit TEXT NOT NULL DEFAULT 'lb',   -- 'lb', 'kg', 'sec', or 'min'
         FOREIGN KEY (variant_id) REFERENCES session_variants(id)
     )
     """)
@@ -63,9 +64,20 @@ def init_db(path):
             set_number INTEGER,
             reps INTEGER,
             weight REAL,
+            unit TEXT NOT NULL DEFAULT 'lb',   -- preserved as of when it was logged
             FOREIGN KEY (workout_log_id) REFERENCES workout_logs(id)
         )
     """)
+
+    # Migration: older databases created before 'unit' existed won't have the
+    # column yet (CREATE TABLE IF NOT EXISTS doesn't retroactively add columns).
+    # Add it in place so existing data isn't lost.
+    for table in ("exercises", "logged_sets"):
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN unit TEXT NOT NULL DEFAULT 'lb'")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
     conn.commit()
     return conn
 
@@ -216,23 +228,24 @@ def delete_variant(conn, variant_id):
 # Exercises (current plan for a variant)
 # ---------------------------------------------------------------------------
 
-def add_exercise(conn, variant_id, name, sets=3, reps=8, weight=0):
-    """Adds a new exercise to a variant's plan and returns its id."""
+def add_exercise(conn, variant_id, name, sets=3, reps=8, weight=0, unit="lb"):
+    """Adds a new exercise to a variant's plan and returns its id.
+    unit is one of 'lb', 'kg', 'sec', or 'min'."""
     cur = conn.execute(
         """INSERT INTO exercises
-           (variant_id, name, order_index, current_sets, current_reps, current_weight)
-           VALUES (?, ?, (SELECT COALESCE(MAX(order_index), -1) + 1 FROM exercises WHERE variant_id = ?), ?, ?, ?)""",
-        (variant_id, name, variant_id, sets, reps, weight)
+           (variant_id, name, order_index, current_sets, current_reps, current_weight, unit)
+           VALUES (?, ?, (SELECT COALESCE(MAX(order_index), -1) + 1 FROM exercises WHERE variant_id = ?), ?, ?, ?, ?)""",
+        (variant_id, name, variant_id, sets, reps, weight, unit)
     )
     conn.commit()
     return cur.lastrowid
 
 
 def get_current_state(conn, variant_id):
-    """Returns the current plan (last known sets/reps/weight) for each exercise in a variant.
-    Each row is (id, name, current_sets, current_reps, current_weight)."""
+    """Returns the current plan (last known sets/reps/weight/unit) for each exercise in a variant.
+    Each row is (id, name, current_sets, current_reps, current_weight, unit)."""
     cur = conn.execute(
-        """SELECT id, name, current_sets, current_reps, current_weight
+        """SELECT id, name, current_sets, current_reps, current_weight, unit
            FROM exercises
            WHERE variant_id = ? ORDER BY order_index""",
         (variant_id,)
@@ -263,7 +276,12 @@ def rename_exercise(conn, exercise_id, new_name):
 # ---------------------------------------------------------------------------
 
 def log_workout(conn, variant_id, exercise_entries):
-    """Saves workout history."""
+    """Saves workout history.
+
+    exercise_entries: list of dicts, e.g.
+        [{"name": "Squat", "unit": "lb", "sets": [{"reps": 8, "weight": 25}, ...]}]
+    "unit" is optional per entry and defaults to 'lb' if omitted.
+    """
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO workout_logs (variant_id, date) VALUES (?, DATE('now'))",
@@ -272,12 +290,13 @@ def log_workout(conn, variant_id, exercise_entries):
     workout_log_id = cur.lastrowid
 
     for exercise in exercise_entries:
+        unit = exercise.get("unit", "lb")
         for i, s in enumerate(exercise["sets"], start=1):
             cur.execute(
                 """INSERT INTO logged_sets
-                   (workout_log_id, exercise_name, set_number, reps, weight)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (workout_log_id, exercise["name"], i, s["reps"], s["weight"])
+                   (workout_log_id, exercise_name, set_number, reps, weight, unit)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (workout_log_id, exercise["name"], i, s["reps"], s["weight"], unit)
             )
     conn.commit()
     return workout_log_id
@@ -296,9 +315,9 @@ def get_workout_history(conn, variant_id):
 
 def get_logged_sets(conn, workout_log_id):
     """Returns all sets recorded for a specific past workout.
-    Each row is (exercise_name, set_number, reps, weight)."""
+    Each row is (exercise_name, set_number, reps, weight, unit)."""
     cur = conn.execute(
-        """SELECT exercise_name, set_number, reps, weight
+        """SELECT exercise_name, set_number, reps, weight, unit
            FROM logged_sets
            WHERE workout_log_id = ? ORDER BY exercise_name, set_number""",
         (workout_log_id,)
@@ -309,9 +328,9 @@ def get_logged_sets(conn, workout_log_id):
 def get_exercise_history(conn, variant_id, exercise_name):
     """Returns every logged set for one specific exercise across all past workouts —
     useful for a progress-over-time view (e.g. a weight-over-time chart for Squat).
-    Each row is (date, set_number, reps, weight)."""
+    Each row is (date, set_number, reps, weight, unit)."""
     cur = conn.execute(
-        """SELECT wl.date, ls.set_number, ls.reps, ls.weight
+        """SELECT wl.date, ls.set_number, ls.reps, ls.weight, ls.unit
            FROM logged_sets ls
            JOIN workout_logs wl ON wl.id = ls.workout_log_id
            WHERE wl.variant_id = ? AND ls.exercise_name = ?
@@ -321,12 +340,12 @@ def get_exercise_history(conn, variant_id, exercise_name):
     return cur.fetchall()
 
 
-def update_exercises(conn, variant_id, exercise_name, sets, reps, weight):
-    """Updates an individual exercise."""
+def update_exercises(conn, variant_id, exercise_name, sets, reps, weight, unit="lb"):
+    """Updates an individual exercise, including its unit."""
     conn.execute(
         """UPDATE exercises
-           SET current_sets = ?, current_reps = ?, current_weight = ?
+           SET current_sets = ?, current_reps = ?, current_weight = ?, unit = ?
            WHERE variant_id = ? AND name = ?""",
-        (sets, reps, weight, variant_id, exercise_name)
+        (sets, reps, weight, unit, variant_id, exercise_name)
     )
     conn.commit()

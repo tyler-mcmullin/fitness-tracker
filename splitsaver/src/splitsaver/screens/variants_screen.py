@@ -208,8 +208,8 @@ class VariantsScreen:
         if variant_id is None:
             return
 
-        exercises = get_current_state(self.conn, variant_id)  # (id, name, sets, reps, weight)
-        for exercise_id, name, sets, reps, weight in exercises:
+        exercises = get_current_state(self.conn, variant_id)  # (id, name, sets, reps, weight, unit)
+        for exercise_id, name, sets, reps, weight, unit in exercises:
             row = toga.Box(style=Pack(direction=ROW, margin=(0, 0, 8, 0), align_items="center"))
 
             name_label = toga.Label(name, style=Pack(flex=1))
@@ -223,11 +223,15 @@ class VariantsScreen:
             reps_input = toga.NumberInput(
                 value=reps, min=0, step=1, style=Pack(width=60, margin=(0, 5, 0, 0))
             )
+            unit_input = toga.TextInput(
+                value=unit, style=Pack(width=70, margin=(0, 10, 0, 0)),
+            )
 
             on_change = self._make_on_field_change(variant_id, exercise_id, name)
             sets_input.on_change = on_change
             weight_input.on_change = on_change
             reps_input.on_change = on_change
+            unit_input.on_change = on_change
 
             remove_button = toga.Button(
                 "Remove",
@@ -241,12 +245,13 @@ class VariantsScreen:
             row.add(reps_input)
             row.add(toga.Label("reps", style=Pack(margin=(0, 10, 0, 0))))
             row.add(weight_input)
-            row.add(toga.Label("lb", style=Pack(margin=(0, 10, 0, 0))))
+            row.add(unit_input)
             row.add(remove_button)
 
             self.exercise_list_box.add(row)
             self._exercise_inputs[exercise_id] = {
-                "weight": weight_input, "reps": reps_input, "sets": sets_input, "name": name,
+                "weight": weight_input, "reps": reps_input, "sets": sets_input,
+                "unit": unit_input, "name": name,
             }
 
     # -----------------------------------------------------------------
@@ -277,7 +282,8 @@ class VariantsScreen:
             sets = int(inputs["sets"].value or 1)
             weight = _parse_weight(inputs["weight"].value)
             reps = int(inputs["reps"].value or 0)
-            update_exercises(self.conn, variant_id, name, sets=sets, reps=reps, weight=weight)
+            unit = (inputs["unit"].value or "").strip() or "lb"
+            update_exercises(self.conn, variant_id, name, sets=sets, reps=reps, weight=weight, unit=unit)
         return handler
 
     def _make_on_remove_exercise(self, exercise_id):
@@ -314,8 +320,10 @@ class VariantsScreen:
             weight = _parse_weight(inputs["weight"].value)
             reps = int(inputs["reps"].value or 0)
             sets = int(inputs["sets"].value or 1)
+            unit = (inputs["unit"].value or "").strip() or "lb"
             exercise_entries.append({
                 "name": inputs["name"],
+                "unit": unit,
                 "sets": [{"reps": reps, "weight": weight} for _ in range(sets)],
             })
 
