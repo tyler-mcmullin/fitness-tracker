@@ -25,6 +25,7 @@ from splitsaver.database import (
     rename_variant,
     delete_variant,
     add_exercise,
+    duplicate_exercises,
     get_current_state,
     delete_exercise,
     rename_exercise,
@@ -84,7 +85,7 @@ def test_get_splits_returns_multiple_in_order(conn):
 
 def test_delete_split_removes_split_and_everything_under_it(conn):
     split_id = create_split(conn, "Push Pull Legs")
-    session_id = create_session(conn, split_id, "Legs")  # auto-creates "A"
+    session_id = create_session(conn, split_id, "Legs")  # auto-creates "Legs 1"
     variant_id = get_variants(conn, session_id)[0][0]
     add_exercise(conn, variant_id, "Squat", sets=3, reps=8, weight=20)
 
@@ -150,7 +151,7 @@ def test_rename_session(conn):
 
 def test_delete_session_removes_session_and_everything_under_it(conn):
     split_id = create_split(conn, "Push Pull Legs")
-    session_id = create_session(conn, split_id, "Legs")  # auto-creates "A"
+    session_id = create_session(conn, split_id, "Legs")  # auto-creates "Legs 1"
     variant_id = get_variants(conn, session_id)[0][0]
     add_exercise(conn, variant_id, "Squat", sets=3, reps=8, weight=20)
 
@@ -181,21 +182,21 @@ def test_create_session_auto_creates_default_variant(conn):
     session_id = create_session(conn, split_id, "Legs")
 
     variants = get_variants(conn, session_id)
-    assert [v[1] for v in variants] == ["A"]
+    assert [v[1] for v in variants] == ["Legs 1"]
 
 
 def test_create_and_get_variants(conn):
     split_id = create_split(conn, "Push Pull Legs")
-    session_id = create_session(conn, split_id, "Legs")  # auto-creates "A"
-    create_variant(conn, session_id, "B")
+    session_id = create_session(conn, split_id, "Legs")  # auto-creates "Legs 1"
+    create_variant(conn, session_id, "Legs 2")
 
     variants = get_variants(conn, session_id)
-    assert [v[1] for v in variants] == ["A", "B"]
+    assert [v[1] for v in variants] == ["Legs 1", "Legs 2"]
 
 
 def test_rename_variant(conn):
     split_id = create_split(conn, "Push Pull Legs")
-    session_id = create_session(conn, split_id, "Legs")  # auto-creates "A"
+    session_id = create_session(conn, split_id, "Legs")  # auto-creates "Legs 1"
     variant_id = get_variants(conn, session_id)[0][0]
 
     rename_variant(conn, variant_id, "Heavy Day")
@@ -206,7 +207,7 @@ def test_rename_variant(conn):
 
 def test_delete_variant_removes_variant_and_its_exercises(conn):
     split_id = create_split(conn, "Push Pull Legs")
-    session_id = create_session(conn, split_id, "Legs")  # auto-creates "A"
+    session_id = create_session(conn, split_id, "Legs")  # auto-creates "Legs 1"
     variant_id = get_variants(conn, session_id)[0][0]
     add_exercise(conn, variant_id, "Squat", sets=3, reps=8, weight=20)
 
@@ -218,7 +219,7 @@ def test_delete_variant_removes_variant_and_its_exercises(conn):
 
 def test_delete_variant_does_not_affect_sibling_variants(conn):
     split_id = create_split(conn, "Push Pull Legs")
-    session_id = create_session(conn, split_id, "Legs")  # auto-creates "A"
+    session_id = create_session(conn, split_id, "Legs")  # auto-creates "Legs 1"
     variant_a = get_variants(conn, session_id)[0][0]
     variant_b = create_variant(conn, session_id, "B")
 
@@ -249,6 +250,50 @@ def test_add_exercise_with_custom_unit(conn):
 
     state = get_current_state(conn, variant_id)
     assert state[0][5] == "sec"
+
+
+def test_duplicate_exercises_copies_all_fields(conn):
+    split_id = create_split(conn, "Push Pull Legs")
+    session_id = create_session(conn, split_id, "Push")  # auto-creates "Push 1"
+    source_id = get_variants(conn, session_id)[0][0]
+    add_exercise(conn, source_id, "Bench Press", sets=4, reps=6, weight=135, unit="lb")
+    add_exercise(conn, source_id, "Plank", sets=3, reps=1, weight=60, unit="sec")
+
+    target_id = create_variant(conn, session_id, "Push 2")
+    duplicate_exercises(conn, source_id, target_id)
+
+    copied = get_current_state(conn, target_id)
+    assert [(row[1], row[2], row[3], row[4], row[5]) for row in copied] == [
+        ("Bench Press", 4, 6, 135, "lb"),
+        ("Plank", 3, 1, 60, "sec"),
+    ]
+
+
+def test_duplicate_exercises_does_not_affect_source(conn):
+    split_id = create_split(conn, "Push Pull Legs")
+    session_id = create_session(conn, split_id, "Push")
+    source_id = get_variants(conn, session_id)[0][0]
+    add_exercise(conn, source_id, "Bench Press", sets=4, reps=6, weight=135)
+
+    target_id = create_variant(conn, session_id, "Push 2")
+    duplicate_exercises(conn, source_id, target_id)
+
+    # Editing the copy shouldn't be possible via duplicate_exercises itself,
+    # but confirm the source still has exactly its original one exercise
+    source_state = get_current_state(conn, source_id)
+    assert len(source_state) == 1
+    assert source_state[0][1] == "Bench Press"
+
+
+def test_duplicate_exercises_with_no_source_exercises_copies_nothing(conn):
+    split_id = create_split(conn, "Push Pull Legs")
+    session_id = create_session(conn, split_id, "Push")
+    source_id = get_variants(conn, session_id)[0][0]  # has no exercises yet
+
+    target_id = create_variant(conn, session_id, "Push 2")
+    duplicate_exercises(conn, source_id, target_id)
+
+    assert get_current_state(conn, target_id) == []
 
 
 def test_add_exercise_preserves_order(conn):

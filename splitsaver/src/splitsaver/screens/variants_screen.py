@@ -7,6 +7,7 @@ from splitsaver.database import (
     get_variants,
     delete_variant,
     add_exercise,
+    duplicate_exercises,
     get_current_state,
     delete_exercise,
     update_exercises,
@@ -121,13 +122,28 @@ class VariantsScreen:
         # deleting the sole default variant isn't offered, since every session needs at least one
         self.delete_variant_container = toga.Box(style=Pack(direction=COLUMN))
 
-        add_variant_row = toga.Box(style=Pack(direction=ROW))
-        self.new_variant_input = toga.TextInput(
-            placeholder="ex: Push Day 2", style=Pack(flex=1, margin=(0, 5, 0, 0))
+        # "Add Variant" starts as a single button; tapping it reveals a small
+        # inline form (name field + duplicate-exercises toggle + Save/Cancel)
+        # rather than creating a variant immediately.
+        self.show_add_variant_form_button = toga.Button(
+            "Add Variant", on_press=self._on_show_add_variant_form, style=Pack(margin=0)
         )
-        add_variant_button = toga.Button("Add Variant", on_press=self._on_add_variant, style=Pack(margin=0))
-        add_variant_row.add(self.new_variant_input)
-        add_variant_row.add(add_variant_button)
+        self.show_add_variant_button_container = toga.Box(style=Pack(direction=COLUMN))
+        self.show_add_variant_button_container.add(self.show_add_variant_form_button)
+
+        self.add_variant_form_container = toga.Box(style=Pack(direction=COLUMN))
+        self.new_variant_name_label = toga.Label("New variant name:", style=Pack(margin=(0, 0, 3, 0)))
+        self.new_variant_input = toga.TextInput(style=Pack(margin=(0, 0, 5, 0)))
+        self.duplicate_switch = toga.Switch("Duplicate current exercises into it")
+        self.form_buttons_row = toga.Box(style=Pack(direction=ROW, margin=(5, 0, 0, 0)))
+        save_variant_button = toga.Button(
+            "Save", on_press=self._on_save_new_variant, style=Pack(margin=(0, 5, 0, 0))
+        )
+        cancel_variant_button = toga.Button(
+            "Cancel", on_press=self._on_cancel_add_variant, style=Pack(margin=0)
+        )
+        self.form_buttons_row.add(save_variant_button)
+        self.form_buttons_row.add(cancel_variant_button)
 
         box.add(back_button)
         box.add(title)
@@ -136,7 +152,8 @@ class VariantsScreen:
         box.add(add_exercise_row)
         box.add(self.log_button)
         box.add(self.delete_variant_container)
-        box.add(add_variant_row)
+        box.add(self.show_add_variant_button_container)
+        box.add(self.add_variant_form_container)
         return box
 
     # -----------------------------------------------------------------
@@ -151,6 +168,10 @@ class VariantsScreen:
             self.current_index = 0
 
         self._render_current_page()
+
+    def _suggested_variant_name(self):
+        """Computes a suggested name for the next variant, e.g. 'Push 2'."""
+        return f"{self.session_name} {len(self.variants) + 1}"
 
     def _render_current_page(self):
         count = len(self.variants)
@@ -338,14 +359,49 @@ class VariantsScreen:
     # Event handlers — variants
     # -----------------------------------------------------------------
 
-    async def _on_add_variant(self, widget):
+    def _on_show_add_variant_form(self, widget):
+        """Reveals the inline 'new variant' form and hides the trigger button."""
+        self.new_variant_input.value = self._suggested_variant_name()
+        self.duplicate_switch.value = False
+
+        while len(self.show_add_variant_button_container.children) > 0:
+            self.show_add_variant_button_container.remove(self.show_add_variant_button_container.children[0])
+
+        while len(self.add_variant_form_container.children) > 0:
+            self.add_variant_form_container.remove(self.add_variant_form_container.children[0])
+        self.add_variant_form_container.add(self.new_variant_name_label)
+        self.add_variant_form_container.add(self.new_variant_input)
+        # Only offer duplication if the current variant actually has exercises to copy
+        if self.variants and get_current_state(self.conn, self.variants[self.current_index][0]):
+            self.add_variant_form_container.add(self.duplicate_switch)
+        self.add_variant_form_container.add(self.form_buttons_row)
+
+    def _hide_add_variant_form(self):
+        """Collapses the form back down to just the trigger button."""
+        while len(self.add_variant_form_container.children) > 0:
+            self.add_variant_form_container.remove(self.add_variant_form_container.children[0])
+
+        while len(self.show_add_variant_button_container.children) > 0:
+            self.show_add_variant_button_container.remove(self.show_add_variant_button_container.children[0])
+        self.show_add_variant_button_container.add(self.show_add_variant_form_button)
+
+    def _on_cancel_add_variant(self, widget):
+        self._hide_add_variant_form()
+
+    async def _on_save_new_variant(self, widget):
         name = self.new_variant_input.value.strip()
         if not name:
-            await self.window.dialog(toga.InfoDialog("Missing name", "Enter a name for the variant first (ex: 'Push Day 2')."))
+            await self.window.dialog(toga.InfoDialog("Missing name", "Enter a name for the variant first."))
             return
 
-        create_variant(self.conn, self.session_id, name)
-        self.new_variant_input.value = ""
+        source_variant_id = self.variants[self.current_index][0] if self.variants else None
+        should_duplicate = self.duplicate_switch.value
+
+        new_variant_id = create_variant(self.conn, self.session_id, name)
+        if should_duplicate and source_variant_id is not None:
+            duplicate_exercises(self.conn, source_variant_id, new_variant_id)
+
+        self._hide_add_variant_form()
         self.current_index = len(self.variants)  # jump to the newly added variant
         self.refresh(keep_index=True)
 

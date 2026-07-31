@@ -135,17 +135,18 @@ def rename_split(conn, split_id, new_name):
 
 def create_session(conn, split_id, name):
     """Creates a new session (e.g. 'Legs') under a split and returns its id.
-    Also creates a default variant ('A') automatically, since every session
-    needs at least one place to hold exercises. This default variant is
-    intentionally unremarkable — the UI hides variant-switching controls
-    until the user explicitly adds a second variant."""
+    Also creates a default variant automatically, named '{session name} 1'
+    (e.g. 'Legs 1'), since every session needs at least one place to hold
+    exercises. This default variant stays hidden in the UI until the user
+    explicitly adds a second variant — at which point they read naturally
+    as a pair, e.g. 'Legs 1' / 'Legs 2'."""
     cur = conn.execute(
         "INSERT INTO sessions (split_id, name, order_index) VALUES (?, ?, "
         "(SELECT COALESCE(MAX(order_index), -1) + 1 FROM sessions WHERE split_id = ?))",
         (split_id, name, split_id)
     )
     session_id = cur.lastrowid
-    create_variant(conn, session_id, "A")
+    create_variant(conn, session_id, f"{name} 1")
     conn.commit()
     return session_id
 
@@ -239,6 +240,16 @@ def add_exercise(conn, variant_id, name, sets=3, reps=8, weight=0, unit="lb"):
     )
     conn.commit()
     return cur.lastrowid
+
+
+def duplicate_exercises(conn, source_variant_id, target_variant_id):
+    """Copies every exercise from one variant's plan into another, preserving
+    sets/reps/weight/unit and order. Used when creating a new variant as a
+    starting point copied from an existing one (e.g. 'Push 2' starting as
+    a copy of 'Push 1', ready to tweak). Does not touch history."""
+    exercises = get_current_state(conn, source_variant_id)  # (id, name, sets, reps, weight, unit)
+    for _id, name, sets, reps, weight, unit in exercises:
+        add_exercise(conn, target_variant_id, name, sets=sets, reps=reps, weight=weight, unit=unit)
 
 
 def get_current_state(conn, variant_id):
