@@ -336,6 +336,21 @@ def get_logged_sets(conn, workout_log_id):
     return cur.fetchall()
 
 
+def get_logged_exercise_names(conn, variant_id):
+    """Returns the distinct exercise names ever logged for this variant, alphabetically.
+    Useful for a history browser, since a deleted or renamed exercise can still
+    have history worth viewing even though it's no longer in the current plan."""
+    cur = conn.execute(
+        """SELECT DISTINCT ls.exercise_name
+           FROM logged_sets ls
+           JOIN workout_logs wl ON wl.id = ls.workout_log_id
+           WHERE wl.variant_id = ?
+           ORDER BY ls.exercise_name""",
+        (variant_id,)
+    )
+    return [row[0] for row in cur.fetchall()]
+
+
 def get_exercise_history(conn, variant_id, exercise_name):
     """Returns every logged set for one specific exercise across all past workouts —
     useful for a progress-over-time view (e.g. a weight-over-time chart for Squat).

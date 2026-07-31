@@ -33,6 +33,7 @@ from splitsaver.database import (
     get_workout_history,
     get_logged_sets,
     get_exercise_history,
+    get_logged_exercise_names,
     update_exercises,
 )
 
@@ -447,6 +448,37 @@ def test_get_exercise_history_ignores_other_exercises(conn, variant_with_exercis
     squat_history = get_exercise_history(conn, variant_id, "Squat")
     assert len(squat_history) == 1
     assert squat_history[0][3] == 20  # weight column, not leg press's 90
+
+
+def test_get_logged_exercise_names_returns_distinct_names(conn, variant_with_exercise):
+    variant_id = variant_with_exercise
+    log_workout(conn, variant_id, [
+        {"name": "Squat", "sets": [{"reps": 8, "weight": 20}]},
+        {"name": "Leg Press", "sets": [{"reps": 10, "weight": 90}]},
+    ])
+    log_workout(conn, variant_id, [
+        {"name": "Squat", "sets": [{"reps": 8, "weight": 22}]},  # logged again, shouldn't duplicate
+    ])
+
+    names = get_logged_exercise_names(conn, variant_id)
+    assert names == ["Leg Press", "Squat"]
+
+
+def test_get_logged_exercise_names_empty_when_nothing_logged(conn, variant_with_exercise):
+    variant_id = variant_with_exercise
+    assert get_logged_exercise_names(conn, variant_id) == []
+
+
+def test_get_logged_exercise_names_survives_exercise_deletion(conn, variant_with_exercise):
+    """History browsing should still find a name even after the exercise is
+    removed from the current plan, since history is decoupled from the plan."""
+    variant_id = variant_with_exercise
+    exercise_id = get_current_state(conn, variant_id)[0][0]
+    log_workout(conn, variant_id, [{"name": "Squat", "sets": [{"reps": 8, "weight": 20}]}])
+
+    delete_exercise(conn, exercise_id)
+
+    assert get_logged_exercise_names(conn, variant_id) == ["Squat"]
 
 
 # ---------------------------------------------------------------------------

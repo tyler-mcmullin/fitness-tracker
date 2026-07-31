@@ -8,15 +8,17 @@ from splitsaver.database import create_split, get_splits, delete_split
 class SplitsScreen:
     """Shows the list of splits. Tap a row to open it, swipe to delete, or use the field below to add one."""
 
-    def __init__(self, conn, window, on_open_split):
+    def __init__(self, conn, window, on_open_split, on_view_history):
         """
         conn: sqlite3 connection
         window: the toga.MainWindow, needed for dialogs
         on_open_split: callback(split_id, split_name) -> called when a split is tapped
+        on_view_history: callback() -> called when "View History" is tapped
         """
         self.conn = conn
         self.window = window
         self.on_open_split = on_open_split
+        self.on_view_history = on_view_history
 
         self.box = self._build()
         self.refresh()
@@ -44,9 +46,14 @@ class SplitsScreen:
         add_row.add(self.new_split_input)
         add_row.add(add_button)
 
+        history_button = toga.Button(
+            "View History", on_press=lambda widget: self.on_view_history(), style=Pack(margin=(0, 0, 10, 0))
+        )
+
         box.add(title)
         box.add(self.list_view)
         box.add(add_row)
+        box.add(history_button)
         return box
 
     def refresh(self):
