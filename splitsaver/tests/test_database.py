@@ -236,8 +236,19 @@ def test_add_exercise_and_get_current_state(conn, variant_with_exercise):
     variant_id = variant_with_exercise
     state = get_current_state(conn, variant_id)
     assert len(state) == 1
-    _, name, sets, reps, weight = state[0]
-    assert (name, sets, reps, weight) == ("Squat", 3, 8, 20)
+    _, name, sets, reps, weight, unit = state[0]
+    assert (name, sets, reps, weight, unit) == ("Squat", 3, 8, 20, "lb")
+
+
+def test_add_exercise_with_custom_unit(conn):
+    split_id = create_split(conn, "Push Pull Legs")
+    session_id = create_session(conn, split_id, "Legs")
+    variant_id = get_variants(conn, session_id)[0][0]
+
+    add_exercise(conn, variant_id, "Plank", sets=3, reps=1, weight=60, unit="sec")
+
+    state = get_current_state(conn, variant_id)
+    assert state[0][5] == "sec"
 
 
 def test_add_exercise_preserves_order(conn):
@@ -353,9 +364,22 @@ def test_get_logged_sets_returns_correct_rows(conn, variant_with_exercise):
 
     sets = get_logged_sets(conn, log_id)
     assert sets == [
-        ("Squat", 1, 8, 20),
-        ("Squat", 2, 6, 22),
+        ("Squat", 1, 8, 20, "lb"),
+        ("Squat", 2, 6, 22, "lb"),
     ]
+
+
+def test_log_workout_records_unit_per_exercise(conn):
+    split_id = create_split(conn, "Push Pull Legs")
+    session_id = create_session(conn, split_id, "Legs")
+    variant_id = get_variants(conn, session_id)[0][0]
+
+    log_id = log_workout(conn, variant_id, [
+        {"name": "Plank", "unit": "sec", "sets": [{"reps": 1, "weight": 60}]}
+    ])
+
+    sets = get_logged_sets(conn, log_id)
+    assert sets == [("Plank", 1, 1, 60, "sec")]
 
 
 def test_get_exercise_history_across_multiple_workouts(conn, variant_with_exercise):
@@ -394,6 +418,18 @@ def test_update_exercises_changes_the_plan(conn, variant_with_exercise):
         (variant_id, "Squat")
     ).fetchone()
     assert row == (3, 8, 25)
+
+
+def test_update_exercises_changes_the_unit(conn, variant_with_exercise):
+    variant_id = variant_with_exercise
+
+    update_exercises(conn, variant_id, "Squat", sets=3, reps=8, weight=25, unit="kg")
+
+    row = conn.execute(
+        "SELECT unit FROM exercises WHERE variant_id = ? AND name = ?",
+        (variant_id, "Squat")
+    ).fetchone()
+    assert row[0] == "kg"
 
 
 def test_update_exercises_only_affects_matching_variant_and_name(conn, variant_with_exercise):
