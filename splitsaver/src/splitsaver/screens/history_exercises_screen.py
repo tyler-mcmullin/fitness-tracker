@@ -3,6 +3,7 @@ from toga.style import Pack
 from toga.style.pack import COLUMN
 
 from splitsaver.database import get_logged_exercise_names
+from splitsaver.screens.styles import SPACE_MD, SCREEN_PADDING, FONT_SIZE_TITLE, margin_bottom
 
 
 class HistoryExercisesScreen:
@@ -29,14 +30,14 @@ class HistoryExercisesScreen:
         self.refresh()
 
     def _build(self):
-        box = toga.Box(style=Pack(direction=COLUMN, margin=10))
+        box = toga.Box(style=Pack(direction=COLUMN, margin=SCREEN_PADDING))
 
         back_button = toga.Button(
-            "< Variants", on_press=lambda widget: self.on_back(), style=Pack(margin=(0, 0, 10, 0))
+            "< Variants", on_press=lambda widget: self.on_back(), style=Pack(margin=margin_bottom(SPACE_MD))
         )
 
         title = toga.Label(
-            self.variant_name, style=Pack(margin=(0, 0, 10, 0), font_size=18, font_weight="bold")
+            self.variant_name, style=Pack(margin=margin_bottom(SPACE_MD), font_size=FONT_SIZE_TITLE, font_weight="bold")
         )
 
         # Placeholder that holds the "no history yet" message, toggled on refresh
@@ -62,7 +63,7 @@ class HistoryExercisesScreen:
             self.empty_container.remove(self.empty_container.children[0])
         if not names:
             self.empty_container.add(
-                toga.Label("No workouts logged for this variant yet.", style=Pack(margin=(0, 0, 10, 0)))
+                toga.Label("No workouts logged for this variant yet.", style=Pack(margin=margin_bottom(SPACE_MD)))
             )
 
     def _on_select(self, widget):

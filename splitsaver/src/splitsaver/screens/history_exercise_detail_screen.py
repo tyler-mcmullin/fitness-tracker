@@ -3,6 +3,10 @@ from toga.style import Pack
 from toga.style.pack import COLUMN, ROW
 
 from splitsaver.database import get_exercise_history
+from splitsaver.screens.styles import (
+    SPACE_XS, SPACE_SM, SPACE_MD, SCREEN_PADDING, FONT_SIZE_TITLE, FONT_SIZE_SUBTITLE,
+    margin_bottom, margin_left,
+)
 
 
 class HistoryExerciseDetailScreen:
@@ -28,17 +32,17 @@ class HistoryExerciseDetailScreen:
         self.refresh()
 
     def _build(self):
-        box = toga.Box(style=Pack(direction=COLUMN, margin=10))
+        box = toga.Box(style=Pack(direction=COLUMN, margin=SCREEN_PADDING))
 
         back_button = toga.Button(
-            "< Exercises", on_press=lambda widget: self.on_back(), style=Pack(margin=(0, 0, 10, 0))
+            "< Exercises", on_press=lambda widget: self.on_back(), style=Pack(margin=margin_bottom(SPACE_MD))
         )
 
         title = toga.Label(
-            self.exercise_name, style=Pack(margin=(0, 0, 3, 0), font_size=18, font_weight="bold")
+            self.exercise_name, style=Pack(margin=margin_bottom(SPACE_XS), font_size=FONT_SIZE_TITLE, font_weight="bold")
         )
         subtitle = toga.Label(
-            self.variant_name, style=Pack(margin=(0, 0, 10, 0), font_size=13)
+            self.variant_name, style=Pack(margin=margin_bottom(SPACE_MD), font_size=FONT_SIZE_SUBTITLE)
         )
 
         self.entries_box = toga.Box(style=Pack(direction=COLUMN))
@@ -62,7 +66,7 @@ class HistoryExerciseDetailScreen:
 
         if not rows:
             self.entries_box.add(
-                toga.Label("No history logged for this exercise yet.", style=Pack(margin=(0, 0, 10, 0)))
+                toga.Label("No history logged for this exercise yet.", style=Pack(margin=margin_bottom(SPACE_MD)))
             )
             return
 
@@ -72,14 +76,14 @@ class HistoryExerciseDetailScreen:
             by_date.setdefault(date, []).append((set_number, reps, weight, unit))
 
         for date in sorted(by_date.keys(), reverse=True):
-            date_box = toga.Box(style=Pack(direction=COLUMN, margin=(0, 0, 12, 0)))
-            date_label = toga.Label(date, style=Pack(margin=(0, 0, 4, 0), font_weight="bold"))
+            date_box = toga.Box(style=Pack(direction=COLUMN, margin=margin_bottom(SPACE_MD)))
+            date_label = toga.Label(date, style=Pack(margin=margin_bottom(SPACE_XS), font_weight="bold"))
             date_box.add(date_label)
 
             for set_number, reps, weight, unit in by_date[date]:
                 set_label = toga.Label(
                     f"{set_number} x {reps} reps - {_format_number(weight)} {unit}",
-                    style=Pack(margin=(0, 0, 2, 10)),
+                    style=Pack(margin=margin_left(SPACE_SM)),
                 )
                 date_box.add(set_label)
 

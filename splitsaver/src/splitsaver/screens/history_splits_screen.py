@@ -3,6 +3,7 @@ from toga.style import Pack
 from toga.style.pack import COLUMN
 
 from splitsaver.database import get_splits
+from splitsaver.screens.styles import SPACE_MD, SCREEN_PADDING, FONT_SIZE_TITLE, margin_bottom
 
 
 class HistorySplitsScreen:
@@ -24,14 +25,14 @@ class HistorySplitsScreen:
         self.refresh()
 
     def _build(self):
-        box = toga.Box(style=Pack(direction=COLUMN, margin=10))
+        box = toga.Box(style=Pack(direction=COLUMN, margin=SCREEN_PADDING))
 
         back_button = toga.Button(
-            "< Back", on_press=lambda widget: self.on_back(), style=Pack(margin=(0, 0, 10, 0))
+            "< Back", on_press=lambda widget: self.on_back(), style=Pack(margin=margin_bottom(SPACE_MD))
         )
 
         title = toga.Label(
-            "History", style=Pack(margin=(0, 0, 10, 0), font_size=18, font_weight="bold")
+            "History", style=Pack(margin=margin_bottom(SPACE_MD), font_size=FONT_SIZE_TITLE, font_weight="bold")
         )
 
         self.list_view = toga.DetailedList(

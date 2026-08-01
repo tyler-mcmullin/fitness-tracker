@@ -13,6 +13,10 @@ from splitsaver.database import (
     update_exercises,
     log_workout,
 )
+from splitsaver.screens.styles import (
+    SPACE_XS, SPACE_SM, SPACE_MD, SCREEN_PADDING, FONT_SIZE_TITLE,
+    margin_bottom, margin_right,
+)
 
 DOT_FILLED = "\u25cf"   # ●
 DOT_EMPTY = "\u25cb"    # ○
@@ -68,19 +72,19 @@ class VariantsScreen:
         self.refresh()
 
     def _build(self):
-        box = toga.Box(style=Pack(direction=COLUMN, margin=10))
+        box = toga.Box(style=Pack(direction=COLUMN, margin=SCREEN_PADDING))
 
         back_button = toga.Button(
-            "< Sessions", on_press=lambda widget: self.on_back(), style=Pack(margin=(0, 0, 10, 0))
+            "< Sessions", on_press=lambda widget: self.on_back(), style=Pack(margin=margin_bottom(SPACE_MD))
         )
 
         title = toga.Label(
             self.session_name,
-            style=Pack(margin=(0, 0, 10, 0), font_size=18, font_weight="bold"),
+            style=Pack(margin=margin_bottom(SPACE_MD), font_size=FONT_SIZE_TITLE, font_weight="bold"),
         )
 
         # Pager: [ < ]  Variant Name  [ > ]  — only shown once there's more than one variant
-        self.pager_row = toga.Box(style=Pack(direction=ROW, margin=(0, 0, 5, 0), align_items="center"))
+        self.pager_row = toga.Box(style=Pack(direction=ROW, margin=margin_bottom(SPACE_SM), align_items="center"))
         self.left_arrow = toga.Button("<", on_press=self._on_prev, style=Pack(width=40), enabled=False)
         self.variant_name_label = toga.Label(
             "", style=Pack(flex=1, text_align="center", font_size=16, font_weight="bold")
@@ -90,20 +94,20 @@ class VariantsScreen:
         self.pager_row.add(self.variant_name_label)
         self.pager_row.add(self.right_arrow)
 
-        self.dots_label = toga.Label("", style=Pack(margin=(0, 0, 10, 0), text_align="center"))
+        self.dots_label = toga.Label("", style=Pack(margin=margin_bottom(SPACE_MD), text_align="center"))
 
         # Placeholder that holds pager_row + dots_label when there's more than one variant
         self.pager_container = toga.Box(style=Pack(direction=COLUMN))
 
         # Exercise list for the current variant
-        self.exercise_list_box = toga.Box(style=Pack(direction=COLUMN, margin=(0, 0, 10, 0)))
+        self.exercise_list_box = toga.Box(style=Pack(direction=COLUMN, margin=margin_bottom(SPACE_MD)))
         exercise_scroll = toga.ScrollContainer(
-            content=self.exercise_list_box, style=Pack(flex=1, margin=(0, 0, 10, 0)), horizontal=False
+            content=self.exercise_list_box, style=Pack(flex=1, margin=margin_bottom(SPACE_MD)), horizontal=False
         )
 
-        add_exercise_row = toga.Box(style=Pack(direction=ROW, margin=(0, 0, 10, 0)))
+        add_exercise_row = toga.Box(style=Pack(direction=ROW, margin=margin_bottom(SPACE_MD)))
         self.new_exercise_input = toga.TextInput(
-            placeholder="ex: Squat", style=Pack(flex=1, margin=(0, 5, 0, 0))
+            placeholder="ex: Squat", style=Pack(flex=1, margin=margin_right(SPACE_SM))
         )
         add_exercise_button = toga.Button(
             "Add Exercise", on_press=self._on_add_exercise, style=Pack(margin=0)
@@ -112,10 +116,10 @@ class VariantsScreen:
         add_exercise_row.add(add_exercise_button)
 
         self.log_button = toga.Button(
-            "Log Workout", on_press=self._on_log_workout, style=Pack(margin=(0, 0, 10, 0)), enabled=False
+            "Log Workout", on_press=self._on_log_workout, style=Pack(margin=margin_bottom(SPACE_MD)), enabled=False
         )
         self.delete_variant_button = toga.Button(
-            "Delete This Variant", on_press=self._on_delete_variant, style=Pack(margin=(0, 0, 10, 0)),
+            "Delete This Variant", on_press=self._on_delete_variant, style=Pack(margin=margin_bottom(SPACE_MD)),
             enabled=False,
         )
         # Placeholder that holds delete_variant_button when there's more than one variant —
@@ -132,12 +136,12 @@ class VariantsScreen:
         self.show_add_variant_button_container.add(self.show_add_variant_form_button)
 
         self.add_variant_form_container = toga.Box(style=Pack(direction=COLUMN))
-        self.new_variant_name_label = toga.Label("New variant name:", style=Pack(margin=(0, 0, 3, 0)))
-        self.new_variant_input = toga.TextInput(style=Pack(margin=(0, 0, 5, 0)))
+        self.new_variant_name_label = toga.Label("New variant name:", style=Pack(margin=margin_bottom(SPACE_XS)))
+        self.new_variant_input = toga.TextInput(style=Pack(margin=margin_bottom(SPACE_SM)))
         self.duplicate_switch = toga.Switch("Duplicate current exercises into it")
-        self.form_buttons_row = toga.Box(style=Pack(direction=ROW, margin=(5, 0, 0, 0)))
+        self.form_buttons_row = toga.Box(style=Pack(direction=ROW, margin=(SPACE_SM, 0, 0, 0)))
         save_variant_button = toga.Button(
-            "Save", on_press=self._on_save_new_variant, style=Pack(margin=(0, 5, 0, 0))
+            "Save", on_press=self._on_save_new_variant, style=Pack(margin=margin_right(SPACE_SM))
         )
         cancel_variant_button = toga.Button(
             "Cancel", on_press=self._on_cancel_add_variant, style=Pack(margin=0)
@@ -231,21 +235,21 @@ class VariantsScreen:
 
         exercises = get_current_state(self.conn, variant_id)  # (id, name, sets, reps, weight, unit)
         for exercise_id, name, sets, reps, weight, unit in exercises:
-            row = toga.Box(style=Pack(direction=ROW, margin=(0, 0, 8, 0), align_items="center"))
+            row = toga.Box(style=Pack(direction=ROW, margin=margin_bottom(SPACE_SM), align_items="center"))
 
             name_label = toga.Label(name, style=Pack(flex=1))
 
             sets_input = toga.NumberInput(
-                value=sets, min=1, step=1, style=Pack(width=50, margin=(0, 5, 0, 0))
+                value=sets, min=1, step=1, style=Pack(width=50, margin=margin_right(SPACE_SM))
             )
             weight_input = toga.TextInput(
-                value=_format_weight(weight), style=Pack(width=70, margin=(0, 5, 0, 0))
+                value=_format_weight(weight), style=Pack(width=70, margin=margin_right(SPACE_SM))
             )
             reps_input = toga.NumberInput(
-                value=reps, min=0, step=1, style=Pack(width=60, margin=(0, 5, 0, 0))
+                value=reps, min=0, step=1, style=Pack(width=60, margin=margin_right(SPACE_SM))
             )
             unit_input = toga.TextInput(
-                value=unit, style=Pack(width=70, margin=(0, 10, 0, 0)),
+                value=unit, style=Pack(width=70, margin=margin_right(SPACE_MD)),
             )
 
             on_change = self._make_on_field_change(variant_id, exercise_id, name)
@@ -262,9 +266,9 @@ class VariantsScreen:
 
             row.add(name_label)
             row.add(sets_input)
-            row.add(toga.Label("sets", style=Pack(margin=(0, 10, 0, 0))))
+            row.add(toga.Label("sets", style=Pack(margin=margin_right(SPACE_MD))))
             row.add(reps_input)
-            row.add(toga.Label("reps", style=Pack(margin=(0, 10, 0, 0))))
+            row.add(toga.Label("reps", style=Pack(margin=margin_right(SPACE_MD))))
             row.add(weight_input)
             row.add(unit_input)
             row.add(remove_button)

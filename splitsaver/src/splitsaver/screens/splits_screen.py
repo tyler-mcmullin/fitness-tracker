@@ -3,6 +3,9 @@ from toga.style import Pack
 from toga.style.pack import COLUMN, ROW
 
 from splitsaver.database import create_split, get_splits, delete_split
+from splitsaver.screens.styles import (
+    SPACE_SM, SPACE_MD, SCREEN_PADDING, FONT_SIZE_TITLE, margin_bottom, margin_right,
+)
 
 
 class SplitsScreen:
@@ -24,15 +27,15 @@ class SplitsScreen:
         self.refresh()
 
     def _build(self):
-        box = toga.Box(style=Pack(direction=COLUMN, margin=10))
+        box = toga.Box(style=Pack(direction=COLUMN, margin=SCREEN_PADDING))
 
         title = toga.Label(
             "My Splits",
-            style=Pack(margin=(0, 0, 10, 0), font_size=18, font_weight="bold"),
+            style=Pack(margin=margin_bottom(SPACE_MD), font_size=FONT_SIZE_TITLE, font_weight="bold"),
         )
 
         self.list_view = toga.DetailedList(
-            style=Pack(flex=1, margin=(0, 0, 10, 0)),
+            style=Pack(flex=1, margin=margin_bottom(SPACE_MD)),
             on_select=self._on_select,
             on_primary_action=self._on_swipe_delete,
         )
@@ -40,14 +43,14 @@ class SplitsScreen:
         add_row = toga.Box(style=Pack(direction=ROW))
         self.new_split_input = toga.TextInput(
             placeholder="ex: Push Pull Legs",
-            style=Pack(flex=1, margin=(0, 5, 0, 0)),
+            style=Pack(flex=1, margin=margin_right(SPACE_SM)),
         )
         add_button = toga.Button("Add Split", on_press=self._on_add, style=Pack(margin=0))
         add_row.add(self.new_split_input)
         add_row.add(add_button)
 
         history_button = toga.Button(
-            "View History", on_press=lambda widget: self.on_view_history(), style=Pack(margin=(0, 0, 10, 0))
+            "View History", on_press=lambda widget: self.on_view_history(), style=Pack(margin=margin_bottom(SPACE_MD))
         )
 
         box.add(title)

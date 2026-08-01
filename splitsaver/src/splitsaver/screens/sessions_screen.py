@@ -3,6 +3,9 @@ from toga.style import Pack
 from toga.style.pack import COLUMN, ROW
 
 from splitsaver.database import create_session, get_sessions, delete_session, get_variants
+from splitsaver.screens.styles import (
+    SPACE_SM, SPACE_MD, SCREEN_PADDING, FONT_SIZE_TITLE, margin_bottom, margin_right,
+)
 
 DOT_FILLED = "\u25cf"  # ●
 
@@ -30,26 +33,26 @@ class SessionsScreen:
         self.refresh()
 
     def _build(self):
-        box = toga.Box(style=Pack(direction=COLUMN, margin=10))
+        box = toga.Box(style=Pack(direction=COLUMN, margin=SCREEN_PADDING))
 
         back_button = toga.Button(
-            "< Splits", on_press=lambda widget: self.on_back(), style=Pack(margin=(0, 0, 10, 0))
+            "< Splits", on_press=lambda widget: self.on_back(), style=Pack(margin=margin_bottom(SPACE_MD))
         )
 
         title = toga.Label(
             self.split_name,
-            style=Pack(margin=(0, 0, 10, 0), font_size=18, font_weight="bold"),
+            style=Pack(margin=margin_bottom(SPACE_MD), font_size=FONT_SIZE_TITLE, font_weight="bold"),
         )
 
         self.list_view = toga.DetailedList(
-            style=Pack(flex=1, margin=(0, 0, 10, 0)),
+            style=Pack(flex=1, margin=margin_bottom(SPACE_MD)),
             on_select=self._on_select,
             on_primary_action=self._on_swipe_delete,
         )
 
         add_row = toga.Box(style=Pack(direction=ROW))
         self.new_session_input = toga.TextInput(
-            placeholder="e.g. Legs", style=Pack(flex=1, margin=(0, 5, 0, 0))
+            placeholder="ex: Legs", style=Pack(flex=1, margin=margin_right(SPACE_SM))
         )
         add_button = toga.Button("Add Session", on_press=self._on_add, style=Pack(margin=0))
         add_row.add(self.new_session_input)
