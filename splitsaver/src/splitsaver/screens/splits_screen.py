@@ -40,14 +40,23 @@ class SplitsScreen:
             on_primary_action=self._on_swipe_delete,
         )
 
-        add_row = toga.Box(style=Pack(direction=ROW))
-        self.new_split_input = toga.TextInput(
-            placeholder="ex: Push Pull Legs",
-            style=Pack(flex=1, margin=margin_right(SPACE_SM)),
+        # "Add Split" starts as a single button; tapping it reveals a small
+        # inline form (name field + Save/Cancel) rather than an always-visible field.
+        self.show_add_form_button = toga.Button(
+            "Add Split", on_press=self._on_show_add_form, style=Pack(margin=margin_bottom(SPACE_MD))
         )
-        add_button = toga.Button("Add Split", on_press=self._on_add, style=Pack(margin=0))
-        add_row.add(self.new_split_input)
-        add_row.add(add_button)
+        self.show_add_button_container = toga.Box(style=Pack(direction=COLUMN))
+        self.show_add_button_container.add(self.show_add_form_button)
+
+        self.add_form_container = toga.Box(style=Pack(direction=COLUMN))
+        self.new_split_input = toga.TextInput(
+            placeholder="ex: Push Pull Legs", style=Pack(margin=margin_bottom(SPACE_SM))
+        )
+        self.add_form_buttons_row = toga.Box(style=Pack(direction=ROW, margin=margin_bottom(SPACE_MD)))
+        save_button = toga.Button("Save", on_press=self._on_add, style=Pack(margin=margin_right(SPACE_SM)))
+        cancel_button = toga.Button("Cancel", on_press=self._on_cancel_add, style=Pack(margin=0))
+        self.add_form_buttons_row.add(save_button)
+        self.add_form_buttons_row.add(cancel_button)
 
         history_button = toga.Button(
             "View History", on_press=lambda widget: self.on_view_history(), style=Pack(margin=margin_bottom(SPACE_MD))
@@ -55,7 +64,8 @@ class SplitsScreen:
 
         box.add(title)
         box.add(self.list_view)
-        box.add(add_row)
+        box.add(self.show_add_button_container)
+        box.add(self.add_form_container)
         box.add(history_button)
         return box
 
@@ -69,6 +79,30 @@ class SplitsScreen:
     # Event handlers
     # -----------------------------------------------------------------
 
+    def _on_show_add_form(self, widget):
+        """Reveals the inline 'new split' form and hides the trigger button."""
+        self.new_split_input.value = ""
+
+        while len(self.show_add_button_container.children) > 0:
+            self.show_add_button_container.remove(self.show_add_button_container.children[0])
+
+        while len(self.add_form_container.children) > 0:
+            self.add_form_container.remove(self.add_form_container.children[0])
+        self.add_form_container.add(self.new_split_input)
+        self.add_form_container.add(self.add_form_buttons_row)
+
+    def _hide_add_form(self):
+        """Collapses the form back down to just the trigger button."""
+        while len(self.add_form_container.children) > 0:
+            self.add_form_container.remove(self.add_form_container.children[0])
+
+        while len(self.show_add_button_container.children) > 0:
+            self.show_add_button_container.remove(self.show_add_button_container.children[0])
+        self.show_add_button_container.add(self.show_add_form_button)
+
+    def _on_cancel_add(self, widget):
+        self._hide_add_form()
+
     async def _on_add(self, widget):
         name = self.new_split_input.value.strip()
         if not name:
@@ -76,7 +110,7 @@ class SplitsScreen:
             return
 
         create_split(self.conn, name)
-        self.new_split_input.value = ""
+        self._hide_add_form()
         self.refresh()
 
     def _on_select(self, widget):

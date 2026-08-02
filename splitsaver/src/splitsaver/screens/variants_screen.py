@@ -105,15 +105,27 @@ class VariantsScreen:
             content=self.exercise_list_box, style=Pack(flex=1, margin=margin_bottom(SPACE_MD)), horizontal=False
         )
 
-        add_exercise_row = toga.Box(style=Pack(direction=ROW, margin=margin_bottom(SPACE_MD)))
+        # "Add Exercise" starts as a single button; tapping it reveals a small
+        # inline form (name field + Save/Cancel) rather than an always-visible field.
+        self.show_add_exercise_form_button = toga.Button(
+            "Add Exercise", on_press=self._on_show_add_exercise_form, style=Pack(margin=margin_bottom(SPACE_MD))
+        )
+        self.show_add_exercise_button_container = toga.Box(style=Pack(direction=COLUMN))
+        self.show_add_exercise_button_container.add(self.show_add_exercise_form_button)
+
+        self.add_exercise_form_container = toga.Box(style=Pack(direction=COLUMN))
         self.new_exercise_input = toga.TextInput(
-            placeholder="ex: Squat", style=Pack(flex=1, margin=margin_right(SPACE_SM))
+            placeholder="ex: Squat", style=Pack(margin=margin_bottom(SPACE_SM))
         )
-        add_exercise_button = toga.Button(
-            "Add Exercise", on_press=self._on_add_exercise, style=Pack(margin=0)
+        self.add_exercise_form_buttons_row = toga.Box(style=Pack(direction=ROW, margin=margin_bottom(SPACE_MD)))
+        save_exercise_button = toga.Button(
+            "Save", on_press=self._on_add_exercise, style=Pack(margin=margin_right(SPACE_SM))
         )
-        add_exercise_row.add(self.new_exercise_input)
-        add_exercise_row.add(add_exercise_button)
+        cancel_exercise_button = toga.Button(
+            "Cancel", on_press=self._on_cancel_add_exercise, style=Pack(margin=0)
+        )
+        self.add_exercise_form_buttons_row.add(save_exercise_button)
+        self.add_exercise_form_buttons_row.add(cancel_exercise_button)
 
         self.log_button = toga.Button(
             "Log Workout", on_press=self._on_log_workout, style=Pack(margin=margin_bottom(SPACE_MD)), enabled=False
@@ -153,7 +165,8 @@ class VariantsScreen:
         box.add(title)
         box.add(self.pager_container)
         box.add(exercise_scroll)
-        box.add(add_exercise_row)
+        box.add(self.show_add_exercise_button_container)
+        box.add(self.add_exercise_form_container)
         box.add(self.log_button)
         box.add(self.delete_variant_container)
         box.add(self.show_add_variant_button_container)
@@ -321,6 +334,30 @@ class VariantsScreen:
                 self._render_current_page()
         return handler
 
+    def _on_show_add_exercise_form(self, widget):
+        """Reveals the inline 'new exercise' form and hides the trigger button."""
+        self.new_exercise_input.value = ""
+
+        while len(self.show_add_exercise_button_container.children) > 0:
+            self.show_add_exercise_button_container.remove(self.show_add_exercise_button_container.children[0])
+
+        while len(self.add_exercise_form_container.children) > 0:
+            self.add_exercise_form_container.remove(self.add_exercise_form_container.children[0])
+        self.add_exercise_form_container.add(self.new_exercise_input)
+        self.add_exercise_form_container.add(self.add_exercise_form_buttons_row)
+
+    def _hide_add_exercise_form(self):
+        """Collapses the form back down to just the trigger button."""
+        while len(self.add_exercise_form_container.children) > 0:
+            self.add_exercise_form_container.remove(self.add_exercise_form_container.children[0])
+
+        while len(self.show_add_exercise_button_container.children) > 0:
+            self.show_add_exercise_button_container.remove(self.show_add_exercise_button_container.children[0])
+        self.show_add_exercise_button_container.add(self.show_add_exercise_form_button)
+
+    def _on_cancel_add_exercise(self, widget):
+        self._hide_add_exercise_form()
+
     async def _on_add_exercise(self, widget):
         name = self.new_exercise_input.value.strip()
         if not name:
@@ -332,7 +369,7 @@ class VariantsScreen:
 
         variant_id, _ = self.variants[self.current_index]
         add_exercise(self.conn, variant_id, name)
-        self.new_exercise_input.value = ""
+        self._hide_add_exercise_form()
         self._render_current_page()
 
     async def _on_log_workout(self, widget):
